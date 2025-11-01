@@ -30,7 +30,7 @@ def load_gitignore_rules(startpath):
     ignore_rules.append("__pycache__")
     ignore_rules.append("files.db")
     ignore_rules.append("create_src.py")
-    ignore_rules.append("Задача.txt")
+    ignore_rules.append("text.txt")
     ignore_rules.append("Исходники.txt")
     ignore_rules.append("*.xlsx")
     ignore_rules.append("Readme.md")
