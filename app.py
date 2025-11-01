@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Конфигурация домена и базового URL
-domain = "172.21.1.201" # Используйте переменные окружения для продакшена
+domain = "tecnobook" # Используйте переменные окружения для продакшена
 base_url = f"http://{domain}"  # Используем f-строку для подстановки значения переменной domain
 
 # --- Вспомогательные функции ---

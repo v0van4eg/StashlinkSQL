@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PicHost — Хостинг изображений</title>
     <style>
+        /* --- CSS остается без изменений --- */
         * {
             margin: 0;
             padding: 0;
@@ -13,7 +14,7 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         body {
-            background: #e9ecef; /* Немного тёмнее оригинала */
+            background: #e9ecef;
             color: #333;
             padding: 20px;
         }
@@ -31,7 +32,7 @@
             margin-bottom: 8px;
         }
         .subtitle {
-            color: #6c757d; /* Тёмнее серого */
+            color: #6c757d;
             font-size: 1.1rem;
         }
 
@@ -51,7 +52,7 @@
         }
 
         .card {
-            background: #f8f9fa; /* Немного тёмнее белого */
+            background: #f8f9fa;
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
             padding: 24px;
@@ -59,18 +60,18 @@
         }
 
         .upload-area {
-            border: 2px dashed #adb5bd; /* Тёмнее серого */
+            border: 2px dashed #adb5bd;
             border-radius: 10px;
             padding: 40px 20px;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s ease;
-            background: #e9ecef; /* Немного тёмнее */
+            background: #e9ecef;
             margin-bottom: 20px;
         }
         .upload-area:hover, .upload-area.drag-over {
             border-color: #3498db;
-            background: #dde6f0; /* Немного тёмнее при наведении */
+            background: #dde6f0;
         }
         .file-input {
             display: none;
@@ -92,7 +93,7 @@
             background: #2980b9;
         }
         .btn:disabled {
-            background: #adb5bd; /* Тёмнее */
+            background: #adb5bd;
             cursor: not-allowed;
         }
         .btn-success {
@@ -128,7 +129,7 @@
         }
         .link-item {
             padding: 16px 0;
-            border-bottom: 1px solid #dee2e6; /* Тёмнее */
+            border-bottom: 1px solid #dee2e6;
         }
         .link-item:last-child {
             border-bottom: none;
@@ -144,7 +145,7 @@
             height: 60px;
             object-fit: cover;
             border-radius: 6px;
-            border: 1px solid #ced4da; /* Тёмнее */
+            border: 1px solid #ced4da;
         }
         .link-url {
             flex: 1;
@@ -152,15 +153,15 @@
         .link-url-input {
             width: 100%;
             padding: 8px 12px;
-            border: 1px solid #ced4da; /* Тёмнее */
+            border: 1px solid #ced4da;
             border-radius: 4px;
             font-family: monospace;
             font-size: 0.9rem;
-            background: #f8f9fa; /* Немного тёмнее */
+            background: #f8f9fa;
         }
         .file-info {
             font-size: 0.8rem;
-            color: #6c757d; /* Тёмнее */
+            color: #6c757d;
             margin-top: 4px;
         }
         .copy-btn {
@@ -170,7 +171,7 @@
         .empty-state {
             text-align: center;
             padding: 40px 0;
-            color: #6c757d; /* Тёмнее */
+            color: #6c757d;
         }
 
         @media (max-width: 900px) {
@@ -190,7 +191,6 @@
             }
         }
     </style>
-
 </head>
 <body>
     <div class="container">
@@ -228,50 +228,6 @@
                 </div>
             </div>
         </div>
-    </div>
-
     <script src="/static/index.js"></script>
-    <script>
-        // Добавляем функцию форматирования размера файла
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-
-        // Модифицируем функцию updateUI из index.js
-        const originalUpdateUI = window.updateUI || function() {};
-        window.updateUI = function() {
-            const file = window.droppedFile || (document.getElementById('zipFile').files[0] || null);
-            const dropArea = document.getElementById('dropArea');
-            const uploadBtn = document.getElementById('uploadBtn');
-
-            if (file) {
-                const fileSize = formatFileSize(file.size);
-                // Показываем имя файла и его размер
-                dropArea.innerHTML = `<p>Выбран файл: <strong>${file.name}</strong></p><p>Размер: ${fileSize}</p><p>Готов к загрузке</p>`;
-                uploadBtn.disabled = false;
-            } else {
-                dropArea.innerHTML = `<p>Перетащите ZIP-архив сюда</p><p>или</p><button type="button" class="btn" id="browseBtn">Выбрать файл</button>`;
-                uploadBtn.disabled = true;
-                // Повторно добавляем обработчик для кнопки "Выбрать файл" после перерисовки
-                setTimeout(() => {
-                    const newBrowseBtn = document.getElementById('browseBtn');
-                    if (newBrowseBtn) {
-                        newBrowseBtn.addEventListener('click', () => document.getElementById('zipFile').click());
-                    }
-                }, 0);
-            }
-        };
-
-        // Вызываем обновленную функцию, если она не была вызвана автоматически
-        // window.updateUI();
-
-        // Обновляем UI при изменении input
-        document.getElementById('zipFile').addEventListener('change', window.updateUI);
-    </script>
-
 </body>
 </html>
