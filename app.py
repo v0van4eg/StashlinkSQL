@@ -39,7 +39,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             filename TEXT NOT NULL, -- Относительный путь к файлу от images/, например: 'album1/article1/file.jpg'
             album_name TEXT NOT NULL,
-            article_number TEXT NOT NULL,
+            article_number TEXT NOT NULL, -- Добавлено для хранения имени артикула
             public_link TEXT NOT NULL, -- Прямая ссылка на файл, например: http://tecnobook/images/album1/article1/file.jpg
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -69,6 +69,7 @@ def get_articles(album_name):
 def get_all_files():
     conn = sqlite3.connect('files.db')
     cursor = conn.cursor()
+    # Добавлено поле article_number в SELECT
     cursor.execute(
         "SELECT filename, album_name, article_number, public_link, created_at FROM files ORDER BY created_at DESC"
     )
@@ -135,6 +136,7 @@ def process_zip(zip_path):
 
                                 conn = sqlite3.connect('files.db')
                                 cursor = conn.cursor()
+                                # Добавлено поле article_number в INSERT
                                 cursor.execute(
                                     "INSERT INTO files (filename, album_name, article_number, public_link) VALUES (?, ?, ?, ?)",
                                     (relative_file_path, album_name, article_folder_norm, public_link)

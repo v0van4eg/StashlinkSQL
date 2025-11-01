@@ -124,73 +124,114 @@ async function showFilesForAlbum(albumName) {
             return;
         }
 
-        linkList.innerHTML = '';
+        // Группировка файлов по артикулам
+        const groupedFiles = {};
         albumFiles.forEach(item => {
-            const li = document.createElement('li');
-            li.className = 'link-item';
-
-            const fullFilePath = item[0]; // filename из БД (например, album1/article1/file.jpg)
-            const absoluteUrl = item[3]; // public_link из БД (например, http://tecnobook/images/album1/article1/file.jpg)
-
-            // Извлекаем путь для изображения (src) из public_link
-            let imageUrl = '/images/'; // Резервный вариант
-            try {
-                const urlObj = new URL(absoluteUrl);
-                // pathname уже начинается с '/', например, '/images/album1/article1/file.jpg'
-                imageUrl = urlObj.pathname;
-            } catch (e) {
-                // Если absoluteUrl не является корректным URL, используем резервный вариант
-                console.error("Error parsing public_link:", absoluteUrl, e);
-                // Путь будет /images/ + relative_file_path
-                imageUrl = `/images/${fullFilePath.replace(/\\/g, '/')}`;
+            const article = item[2]; // item[2] - article_number
+            if (!groupedFiles[article]) {
+                groupedFiles[article] = [];
             }
+            groupedFiles[article].push(item);
+        });
 
-            // Создаем контейнер предварительного просмотра
-            const previewDiv = document.createElement('div');
-            previewDiv.className = 'link-preview';
+        linkList.innerHTML = '';
 
-            // Создаем изображение предварительного просмотра
-            const img = document.createElement('img');
-            img.src = imageUrl; // Используем путь, извлеченный из public_link
-            img.alt = Path.basename(fullFilePath);
-            img.onerror = function() {
-                // Плейсхолдер для файлов, которые не являются изображениями или не загружаются
-                this.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjFGNUY5Ii8+CjxwYXRoIGQ9Ik0zNi41IDI0LjVIMjMuNVYzNy41SDM2LjVWMjQuNVoiIGZpbGw9IiNEOEUxRTYiLz4KPHBhdGggZD0iTTI1IDI2SDM1VjI5SDI1VjI2WiIgZmlsbD0iI0Q4RTFFNiIvPgo8cGF0aCBkPSJNMjUgMzFIMzJWMzRIMjVWMzFaIiBmaWxsPSIjRDhFMUU2Ii8+Cjwvc3ZnPg==';
+        // Сортировка артикулов (например, лексикографически)
+        const sortedArticles = Object.keys(groupedFiles).sort();
+
+        sortedArticles.forEach(article => {
+            // Добавляем заголовок артикула
+            const articleHeader = document.createElement('li');
+            articleHeader.className = 'article-header';
+            articleHeader.textContent = `Артикул: ${article}`;
+            linkList.appendChild(articleHeader);
+
+            // Получаем файлы для текущего артикула
+            const filesForArticle = groupedFiles[article];
+
+            // Функция для извлечения суффикса из имени файла
+            const extractSuffix = (filename) => {
+                const baseName = Path.basename(filename);
+                const match = baseName.match(/_([0-9]+)(\.[^.]*)?$/); // Ищем _число в конце перед расширением
+                return match ? parseInt(match[1], 10) : 0; // Возвращаем число или 0, если не найдено
             };
 
-            // Создаем контейнер URL
-            const urlDiv = document.createElement('div');
-            urlDiv.className = 'link-url';
+            // Сортируем файлы внутри артикула по суффиксу
+            filesForArticle.sort((a, b) => {
+                const suffixA = extractSuffix(a[0]); // a[0] - filename
+                const suffixB = extractSuffix(b[0]); // b[0] - filename
+                return suffixA - suffixB;
+            });
 
-            const urlInput = document.createElement('input');
-            urlInput.type = 'text';
-            urlInput.value = absoluteUrl; // Используем absoluteUrl (public_link) из БД
-            urlInput.readOnly = true;
-            urlInput.className = 'link-url-input';
-            urlInput.title = 'Прямая ссылка на изображение';
+            // Создаем элементы для каждого файла в артикуле
+            filesForArticle.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'link-item';
 
-            // Создаем кнопку копирования
-            const copyBtn = document.createElement('button');
-            copyBtn.type = 'button';
-            copyBtn.className = 'btn btn-copy copy-btn';
-            copyBtn.textContent = 'Копировать';
-            copyBtn.addEventListener('click', () => copyToClipboard(absoluteUrl, copyBtn)); // Копируем absoluteUrl из БД
+                const fullFilePath = item[0]; // filename из БД (например, album1/article1/file.jpg)
+                const absoluteUrl = item[3]; // public_link из БД (например, http://tecnobook/images/album1/article1/file.jpg)
 
-            // Создаем информацию о файле
-            const fileInfo = document.createElement('div');
-            fileInfo.className = 'file-info';
-            fileInfo.textContent = fullFilePath; // Отображаем имя файла
+                // Извлекаем путь для изображения (src) из public_link
+                let imageUrl = '/images/'; // Резервный вариант
+                try {
+                    const urlObj = new URL(absoluteUrl);
+                    // pathname уже начинается с '/', например, '/images/album1/article1/file.jpg'
+                    imageUrl = urlObj.pathname;
+                } catch (e) {
+                    // Если absoluteUrl не является корректным URL, используем резервный вариант
+                    console.error("Error parsing public_link:", absoluteUrl, e);
+                    // Путь будет /images/ + relative_file_path
+                    imageUrl = `/images/${fullFilePath.replace(/\\/g, '/')}`;
+                }
 
-            // Собираем элементы
-            urlDiv.appendChild(urlInput);
-            previewDiv.appendChild(img);
-            previewDiv.appendChild(urlDiv);
-            previewDiv.appendChild(copyBtn);
+                // Создаем контейнер предварительного просмотра
+                const previewDiv = document.createElement('div');
+                previewDiv.className = 'link-preview';
 
-            li.appendChild(previewDiv);
-            li.appendChild(fileInfo);
-            linkList.appendChild(li);
+                // Создаем изображение предварительного просмотра
+                const img = document.createElement('img');
+                img.src = imageUrl; // Используем путь, извлеченный из public_link
+                img.alt = Path.basename(fullFilePath);
+                img.onerror = function() {
+                    // Плейсхолдер для файлов, которые не являются изображениями или не загружаются
+                    this.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjFGNUY5Ii8+CjxwYXRoIGQ9Ik0zNi41IDI0LjVIMjMuNVYzNy41SDM2LjVWMjQuNVoiIGZpbGw9IiNEOEUxRTYiLz4KPHBhdGggZD0iTTI1IDI2SDM1VjI5SDI1VjI2WiIgZmlsbD0iI0Q4RTFFNiIvPgo8cGF0aCBkPSJNMjUgMzFIMzJWMzRIMjVWMzFaIiBmaWxsPSIjRDhFMUU2Ii8+Cjwvc3ZnPg==';
+                };
+
+                // Создаем контейнер URL
+                const urlDiv = document.createElement('div');
+                urlDiv.className = 'link-url';
+
+                const urlInput = document.createElement('input');
+                urlInput.type = 'text';
+                urlInput.value = absoluteUrl; // Используем absoluteUrl (public_link) из БД
+                urlInput.readOnly = true;
+                urlInput.className = 'link-url-input';
+                urlInput.title = 'Прямая ссылка на изображение';
+
+                // Создаем кнопку копирования
+                const copyBtn = document.createElement('button');
+                copyBtn.type = 'button';
+                copyBtn.className = 'btn btn-copy copy-btn';
+                copyBtn.textContent = 'Копировать';
+                copyBtn.addEventListener('click', () => copyToClipboard(absoluteUrl, copyBtn)); // Копируем absoluteUrl из БД
+
+                // Создаем информацию о файле
+                const fileInfo = document.createElement('div');
+                fileInfo.className = 'file-info';
+                fileInfo.textContent = fullFilePath; // Отображаем имя файла
+
+                // Собираем элементы
+                urlDiv.appendChild(urlInput);
+                previewDiv.appendChild(img);
+                previewDiv.appendChild(urlDiv);
+                previewDiv.appendChild(copyBtn);
+
+                li.appendChild(previewDiv);
+                li.appendChild(fileInfo);
+                linkList.appendChild(li);
+            });
         });
+
     } catch (error) {
         console.error('Error loading files:', error);
         linkList.innerHTML = `<div class="empty-state">Ошибка загрузки файлов для "${albumName}".</div>`;
