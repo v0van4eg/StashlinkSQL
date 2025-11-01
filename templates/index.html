@@ -13,7 +13,7 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         body {
-            background: #f8f9fa;
+            background: #e9ecef; /* Немного тёмнее оригинала */
             color: #333;
             padding: 20px;
         }
@@ -31,7 +31,7 @@
             margin-bottom: 8px;
         }
         .subtitle {
-            color: #7f8c8d;
+            color: #6c757d; /* Тёмнее серого */
             font-size: 1.1rem;
         }
 
@@ -51,7 +51,7 @@
         }
 
         .card {
-            background: white;
+            background: #f8f9fa; /* Немного тёмнее белого */
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
             padding: 24px;
@@ -59,18 +59,18 @@
         }
 
         .upload-area {
-            border: 2px dashed #bdc3c7;
+            border: 2px dashed #adb5bd; /* Тёмнее серого */
             border-radius: 10px;
             padding: 40px 20px;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s ease;
-            background: #fafafa;
+            background: #e9ecef; /* Немного тёмнее */
             margin-bottom: 20px;
         }
         .upload-area:hover, .upload-area.drag-over {
             border-color: #3498db;
-            background: #f0f8ff;
+            background: #dde6f0; /* Немного тёмнее при наведении */
         }
         .file-input {
             display: none;
@@ -92,7 +92,7 @@
             background: #2980b9;
         }
         .btn:disabled {
-            background: #bdc3c7;
+            background: #adb5bd; /* Тёмнее */
             cursor: not-allowed;
         }
         .btn-success {
@@ -128,7 +128,7 @@
         }
         .link-item {
             padding: 16px 0;
-            border-bottom: 1px solid #ecf0f1;
+            border-bottom: 1px solid #dee2e6; /* Тёмнее */
         }
         .link-item:last-child {
             border-bottom: none;
@@ -144,7 +144,7 @@
             height: 60px;
             object-fit: cover;
             border-radius: 6px;
-            border: 1px solid #ddd;
+            border: 1px solid #ced4da; /* Тёмнее */
         }
         .link-url {
             flex: 1;
@@ -152,15 +152,15 @@
         .link-url-input {
             width: 100%;
             padding: 8px 12px;
-            border: 1px solid #ddd;
+            border: 1px solid #ced4da; /* Тёмнее */
             border-radius: 4px;
             font-family: monospace;
             font-size: 0.9rem;
-            background: #f8f9fa;
+            background: #f8f9fa; /* Немного тёмнее */
         }
         .file-info {
             font-size: 0.8rem;
-            color: #666;
+            color: #6c757d; /* Тёмнее */
             margin-top: 4px;
         }
         .copy-btn {
@@ -170,7 +170,7 @@
         .empty-state {
             text-align: center;
             padding: 40px 0;
-            color: #95a5a6;
+            color: #6c757d; /* Тёмнее */
         }
 
         @media (max-width: 900px) {
@@ -232,7 +232,7 @@
 
     <script src="/static/index.js"></script>
     <script>
-        window.domain = "{{ domain }}"; // Передается из Flask
+        windos.base_url = "{{ base_url }}";
     </script>
 </body>
 </html>

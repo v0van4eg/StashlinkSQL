@@ -152,6 +152,7 @@ async function showFilesForAlbum(albumName) {
         const allFiles = await response.json();
 
         // Filter by album name
+        // Structure of each item in allFiles: [filename, album_name, article_number, public_link, created_at]
         const albumFiles = allFiles.filter(item => item[1] === albumName); // item[1] - album_name
 
         if (albumFiles.length === 0) {
@@ -165,11 +166,20 @@ async function showFilesForAlbum(albumName) {
             li.className = 'link-item';
 
             const fullFilePath = item[0]; // filename from DB (e.g., album1/article1/file.jpg)
-            // Преобразование пути для URL (если нужно, можно использовать encodeURIComponent)
-            const encodedPath = fullFilePath.replace(/\//g, '/'); // Убедимся, что пути разделены '/'
-            const imageUrl = `/images/${encodedPath}`; // Используем правильный префикс
-            // Собираем полный URL, который будет работать
-            const absoluteUrl = `${window.domain}${imageUrl}`; // Используем домен из шаблона
+            const absoluteUrl = item[3]; // public_link from DB (e.g., http://tecnobook/images/album1/article1/file.jpg)
+
+            // Извлекаем путь для изображения (src) из public_link
+            let imageUrl = '/images/'; // Fallback
+            try {
+                const urlObj = new URL(absoluteUrl);
+                // pathname уже начинается с '/', например, '/images/album1/article1/file.jpg'
+                imageUrl = urlObj.pathname;
+            } catch (e) {
+                // Если absoluteUrl не является корректным URL, используем fallback
+                console.error("Error parsing public_link:", absoluteUrl, e);
+                // Путь будет /images/ + relative_file_path
+                imageUrl = `/images/${fullFilePath.replace(/\\/g, '/')}`;
+            }
 
             // Create preview container
             const previewDiv = document.createElement('div');
@@ -177,10 +187,10 @@ async function showFilesForAlbum(albumName) {
 
             // Create image preview
             const img = document.createElement('img');
-            img.src = imageUrl;
+            img.src = imageUrl; // Используем путь, извлеченный из public_link
             img.alt = Path.basename(fullFilePath);
             img.onerror = function() {
-                this.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjFGNUY5Ii8+CjxwYXRoIGQ9Ik0zNi41IDI0LjVIMjMuNVYzNy41SDM2LjVWMjQuNVoiIGZpbGw9IiNEOEUxRTYiLz4KPHBhdGggZD0iTTI1IDI2SDM1VjI5SDI1VjI2WiIgZmlsbD0iI0Q4RTFFNiIvPgo8cGF0aCBkPSJNMjUgMzFIMzJWMzRIMjVWMzFaIiBmaWxsPSIjRDhFMUU2Ii8+Cjwvc3ZnPg=='; // Placeholder for non-image files
+                this.src = 'image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjFGNUY5Ii8+CjxwYXRoIGQ9Ik0zNi41IDI0LjVIMjMuNVYzNy41SDM2LjVWMjQuNVoiIGZpbGw9IiNEOEUxRTYiLz4KPHBhdGggZD0iTTI1IDI2SDM1VjI5SDI1VjI2WiIgZmlsbD0iI0Q4RTFFNiIvPgo8cGF0aCBkPSJNMjUgMzFIMzJWMzRIMjVWMzFaIiBmaWxsPSIjRDhFMUU2Ii8+Cjwvc3ZnPg=='; // Placeholder for non-image files
             };
 
             // Create URL container
@@ -189,7 +199,7 @@ async function showFilesForAlbum(albumName) {
 
             const urlInput = document.createElement('input');
             urlInput.type = 'text';
-            urlInput.value = absoluteUrl; // Используем абсолютный URL
+            urlInput.value = absoluteUrl; // Используем absoluteUrl (public_link) из БД
             urlInput.readOnly = true;
             urlInput.className = 'link-url-input';
             urlInput.title = 'Прямая ссылка на изображение';
@@ -199,12 +209,12 @@ async function showFilesForAlbum(albumName) {
             copyBtn.type = 'button';
             copyBtn.className = 'btn btn-copy copy-btn';
             copyBtn.textContent = 'Копировать';
-            copyBtn.addEventListener('click', () => copyToClipboard(absoluteUrl, copyBtn));
+            copyBtn.addEventListener('click', () => copyToClipboard(absoluteUrl, copyBtn)); // Копируем absoluteUrl из БД
 
             // Create file info
             const fileInfo = document.createElement('div');
             fileInfo.className = 'file-info';
-            fileInfo.textContent = fullFilePath;
+            fileInfo.textContent = fullFilePath; // Отображаем имя файла
 
             // Assemble the elements
             urlDiv.appendChild(urlInput);

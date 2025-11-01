@@ -17,8 +17,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Конфигурация домена и базового URL
-domain = 'tecnobook' # Используйте переменные окружения для продакшена
-base_url = f'http://{domain}'
+domain = "tecnobook" # Используйте переменные окружения для продакшена
+base_url = f"http://{domain}"  # Используем f-строку для подстановки значения переменной domain
 
 # --- Вспомогательные функции ---
 def safe_folder_name(name: str) -> str:
@@ -150,7 +150,7 @@ def process_zip(zip_path):
 # --- Routes ---
 @app.route('/')
 def index():
-    return render_template('index.html', domain=domain)
+    return render_template('index.html', base_url=base_url)
 
 # Эндпоинт синхронизации БД
 @app.route('/api/sync', methods=['POST'])
