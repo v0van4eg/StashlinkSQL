@@ -16,6 +16,7 @@
             background: #e9ecef; /* Немного тёмнее оригинала */
             color: #333;
             padding: 20px;
+            min-height: 100vh; /* Убедимся, что body минимум на высоту экрана */
         }
         .container {
             max-width: 1400px;
@@ -38,11 +39,14 @@
         .columns {
             display: flex;
             gap: 24px;
+            min-height: calc(100vh - 180px); /* Примерно высота экрана минус заголовок и отступы */
         }
 
         .column-left {
             flex: 0 0 25%;
             min-width: 0;
+            display: flex; /* Сделаем её flex-контейнером */
+            flex-direction: column; /* Расположим элементы вертикально */
         }
 
         .column-right {
@@ -55,7 +59,13 @@
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
             padding: 24px;
-            height: fit-content;
+            /* height: fit-content; - Убираем, чтобы карточка могла растягиваться */
+        }
+
+        .upload-card { /* Новый стиль для левой карточки */
+            display: flex;
+            flex-direction: column;
+            flex: 1; /* Растягиваем на доступное пространство */
         }
 
         .upload-area {
@@ -67,6 +77,10 @@
             transition: all 0.3s ease;
             background: #e9ecef; /* Немного тёмнее */
             margin-bottom: 20px;
+            flex: 1; /* Растягиваем на доступное пространство */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
         .upload-area:hover, .upload-area.drag-over {
             border-color: #3498db;
@@ -173,6 +187,23 @@
             color: #6c757d; /* Тёмнее */
         }
 
+        /* Новый стиль для отображения информации о файле */
+        .file-info-upload {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #e2e3e5; /* Светло-серый фон */
+            border-radius: 6px;
+            border-left: 4px solid #3498db; /* Акцентная линия */
+            font-size: 0.9rem;
+            word-break: break-all; /* Перенос длинных имён */
+        }
+        .file-info-upload p {
+            margin: 0 0 5px 0;
+        }
+        .file-info-upload p:last-child {
+            margin-bottom: 0;
+        }
+
         @media (max-width: 900px) {
             .columns {
                 flex-direction: column;
@@ -201,7 +232,7 @@
 
         <div class="columns">
             <div class="column-left">
-                <div class="card">
+                <div class="card upload-card">
                     <h2>📤 Загрузите ZIP-архив</h2>
                     <form id="uploadForm" enctype="multipart/form-data">
                         <div class="upload-area" id="dropArea">
@@ -213,6 +244,11 @@
                         <button type="submit" class="btn" id="uploadBtn" disabled>
                             <span>Загрузить архив</span>
                         </button>
+                        <!-- Контейнер для информации о файле -->
+                        <div id="fileInfoContainer" class="file-info-upload" style="display: none;">
+                            <p><strong>Имя файла:</strong> <span id="fileNameDisplay"></span></p>
+                            <p><strong>Размер файла:</strong> <span id="fileSizeDisplay"></span></p>
+                        </div>
                     </form>
                 </div>
             </div>
