@@ -1,3 +1,5 @@
+Структура архива
+
 album.zip
     ├── article1/
     │   ├── article1_num1.jpg

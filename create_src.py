@@ -34,7 +34,7 @@ def load_gitignore_rules(startpath):
     ignore_rules.append("Исходники.txt")
     ignore_rules.append("*.xlsx")
     ignore_rules.append("Readme.md")
-    ignore_rules.append("uploads/*")
+    ignore_rules.append("images/*")
     return ignore_rules
 
 

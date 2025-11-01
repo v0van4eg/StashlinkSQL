@@ -46,7 +46,7 @@ dropArea.addEventListener('drop', (e) => {
         droppedFile = file;
         updateUI();
     } else {
-        alert('Please drop a valid ZIP file.');
+        alert('Пожалуйста, выберите ZIP-архив.');
     }
 });
 
@@ -60,10 +60,10 @@ zipFileInput.addEventListener('change', () => {
 function updateUI() {
     const file = droppedFile || (zipFileInput.files[0] || null);
     if (file) {
-        dropArea.innerHTML = `<p>Selected: <strong>${file.name}</strong></p><p>Ready to upload</p>`;
+        dropArea.innerHTML = `<p>Выбран файл: <strong>${file.name}</strong></p><p>Готов к загрузке</p>`;
         uploadBtn.disabled = false;
     } else {
-        dropArea.innerHTML = `<p>Drag & drop your ZIP file here</p><p>or</p><button type="button" class="btn" id="browseBtn">Browse Files</button>`;
+        dropArea.innerHTML = `<p>Перетащите ZIP-архив сюда</p><p>или</p><button type="button" class="btn" id="browseBtn">Выбрать файл</button>`;
         uploadBtn.disabled = true;
         setTimeout(() => {
             const newBrowseBtn = document.getElementById('browseBtn');
@@ -79,7 +79,7 @@ uploadForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const file = droppedFile || zipFileInput.files[0];
     if (!file || !file.name.toLowerCase().endsWith('.zip')) {
-        alert('Please select a valid ZIP file.');
+        alert('Пожалуйста, выберите ZIP-архив.');
         return;
     }
 
@@ -87,50 +87,74 @@ uploadForm.addEventListener('submit', async (e) => {
     formData.append('zipfile', file, file.name);
 
     uploadBtn.disabled = true;
-    uploadBtn.innerHTML = '<span>Uploading...</span>';
+    uploadBtn.innerHTML = '<span>Загрузка...</span>';
 
     try {
         const response = await fetch('/upload', { method: 'POST', body: formData });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
 
-        // Воссоздаём имя альбома так же, как на сервере (упрощённо)
-        let albumName = file.name.replace(/\.zip$/i, '');
-        albumName = albumName.normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '') // remove accents
-            .replace(/[^\w\s-]/g, '')         // remove unsafe chars
-            .replace(/[-\s]+/g, '-')          // spaces/dashes → single dash
-            .replace(/^-+|-+$/g, '')          // trim dashes
-            .substring(0, 255) || 'unnamed';
-
+        let albumName = data.album_name || file.name.replace(/\.zip$/i, '');
         currentAlbumName = albumName;
         showFilesForAlbum(albumName);
-        alert('Upload successful!');
+        alert('Архив успешно загружен!');
     } catch (error) {
         console.error('Upload failed:', error);
-        alert(`Upload failed: ${error.message}`);
+        alert(`Ошибка загрузки: ${error.message}`);
     } finally {
         uploadBtn.disabled = false;
-        uploadBtn.innerHTML = '<span>Upload Archive</span>';
+        uploadBtn.innerHTML = '<span>Загрузить архив</span>';
         zipFileInput.value = '';
         droppedFile = null;
         updateUI();
     }
 });
 
+// Copy URL to clipboard
+function copyToClipboard(text, button) {
+    navigator.clipboard.writeText(text).then(() => {
+        const originalText = button.textContent;
+        button.textContent = 'Скопировано!';
+        button.classList.add('copied');
+
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.classList.remove('copied');
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy: ', err);
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+
+        const originalText = button.textContent;
+        button.textContent = 'Скопировано!';
+        button.classList.add('copied');
+
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.classList.remove('copied');
+        }, 2000);
+    });
+}
+
 // Load and display files for a specific album
 async function showFilesForAlbum(albumName) {
-    currentAlbumTitle.textContent = `Files in "${albumName}"`;
+    currentAlbumTitle.textContent = `Изображения в "${albumName}"`;
     try {
         const response = await fetch('/api/files');
         if (!response.ok) throw new Error('Failed to load file list');
         const allFiles = await response.json();
 
-        // Фильтруем по имени альбома (item[1] = album_name)
+        // Filter by album name
         const albumFiles = allFiles.filter(item => item[1] === albumName);
 
         if (albumFiles.length === 0) {
-            linkList.innerHTML = '<div class="empty-state">No files found in this album.</div>';
+            linkList.innerHTML = '<div class="empty-state">В этом альбоме нет файлов.</div>';
             return;
         }
 
@@ -139,21 +163,61 @@ async function showFilesForAlbum(albumName) {
             const li = document.createElement('li');
             li.className = 'link-item';
 
-            const link = document.createElement('a');
-            // ВАЖНО: используем ПОЛНЫЙ путь item[0] — он включает album/article/file.jpg
-            link.href = `/static/${item[0]}`; // ← НЕТ encodeURIComponent!
-            link.target = '_blank';
-            // Отображаем: article / filename
-            link.textContent = `${item[2]} / ${Path.basename(item[0])}`;
-            li.appendChild(link);
+            const fullFilePath = item[0]; // filename from DB (e.g., album1/article1/file.jpg)
+            const encodedPath = fullFilePath.split('/').map(encodeURIComponent).join('/');
+            const imageUrl = `/images/${encodedPath}`;
+            const absoluteUrl = `${window.location.origin}${imageUrl}`;
 
+            // Create preview container
+            const previewDiv = document.createElement('div');
+            previewDiv.className = 'link-preview';
+
+            // Create image preview
+            const img = document.createElement('img');
+            img.src = imageUrl;
+            img.alt = Path.basename(fullFilePath);
+            img.onerror = function() {
+                this.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjFGNUY5Ii8+CjxwYXRoIGQ9Ik0zNi41IDI0LjVIMjMuNVYzNy41SDM2LjVWMjQuNVoiIGZpbGw9IiNEOEUxRTYiLz4KPHBhdGggZD0iTTI1IDI2SDM1VjI5SDI1VjI2WiIgZpbGw9IiNEOEUxRTYiLz4KPHBhdGggZD0iTTI1IDMxSDMyVjM0SDI1VjMxWiIgZmlsbD0iI0Q4RTFFNiIvPgo8L3N2Zz4K'; // Placeholder for non-image files
+            };
+
+            // Create URL container
+            const urlDiv = document.createElement('div');
+            urlDiv.className = 'link-url';
+
+            const urlInput = document.createElement('input');
+            urlInput.type = 'text';
+            urlInput.value = absoluteUrl;
+            urlInput.readOnly = true;
+            urlInput.className = 'link-url-input';
+            urlInput.title = 'Прямая ссылка на изображение';
+
+            // Create copy button
+            const copyBtn = document.createElement('button');
+            copyBtn.type = 'button';
+            copyBtn.className = 'btn btn-copy copy-btn';
+            copyBtn.textContent = 'Копировать';
+            copyBtn.addEventListener('click', () => copyToClipboard(absoluteUrl, copyBtn));
+
+            // Create file info
+            const fileInfo = document.createElement('div');
+            fileInfo.className = 'file-info';
+            fileInfo.textContent = fullFilePath;
+
+            // Assemble the elements
+            urlDiv.appendChild(urlInput);
+            previewDiv.appendChild(img);
+            previewDiv.appendChild(urlDiv);
+            previewDiv.appendChild(copyBtn);
+
+            li.appendChild(previewDiv);
+            li.appendChild(fileInfo);
             linkList.appendChild(li);
         });
     } catch (error) {
         console.error('Error loading files:', error);
-        linkList.innerHTML = `<div class="empty-state">Error loading files for "${albumName}".</div>`;
+        linkList.innerHTML = `<div class="empty-state">Ошибка загрузки файлов для "${albumName}".</div>`;
     }
 }
 
 // Initial state
-linkList.innerHTML = '<div class="empty-state">Upload a ZIP archive to see files.</div>';
+linkList.innerHTML = '<div class="empty-state">Загрузите ZIP-архив, чтобы получить прямые ссылки на изображения</div>';

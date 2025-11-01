@@ -1,25 +1,22 @@
 # app.py
 import os
 import zipfile
-import json
-import shutil
-from pathlib import Path
 from flask import Flask, request, jsonify, render_template, send_from_directory
-import uuid
 import sqlite3
-from datetime import datetime
 import logging
 import re
 import unicodedata
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['UPLOAD_FOLDER'] = 'images'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 * 1024
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# SERVERNAME = os.getenv('SERVERNAME', 'tecnobook')  # можно задать через env
+SERVERNAME = 'tecnobook'
 
 # --- Вспомогательные функции ---
 def safe_folder_name(name: str) -> str:
@@ -81,22 +78,6 @@ def get_published_links(album_name, article_number, offset=0, limit=20):
     return results
 
 
-def publish_file(filename):
-    conn = sqlite3.connect('files.db')
-    cursor = conn.cursor()
-    cursor.execute("UPDATE files SET published=1 WHERE filename=?", (filename,))
-    conn.commit()
-    conn.close()
-
-
-def unpublish_file(filename):
-    conn = sqlite3.connect('files.db')
-    cursor = conn.cursor()
-    cursor.execute("UPDATE files SET published=0 WHERE filename=?", (filename,))
-    conn.commit()
-    conn.close()
-
-
 def get_all_published_files():
     conn = sqlite3.connect('files.db')
     cursor = conn.cursor()
@@ -119,7 +100,8 @@ def get_all_files():
 
 def process_zip(zip_path):
     try:
-        with zipfile.ZipFile(zip_path, 'r', metadata_encoding='utf-8') as zip_ref:
+        # Убран параметр metadata_encoding для совместимости
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             # Получаем имя архива без расширения (оно уже безопасное)
             zip_basename = os.path.basename(zip_path)
             album_name_raw = os.path.splitext(zip_basename)[0]
@@ -171,12 +153,13 @@ def process_zip(zip_path):
 # Routes
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', SERVERNAME=SERVERNAME)
 
 
-@app.route('/publinks')
-def publinks():
-    return render_template('publinks.html')
+# Пример маршрута для публичных ссылок
+# @app.route('/publinks')
+# def publinks():
+#     return render_template('index.html')
 
 
 @app.route('/upload', methods=['POST'])
@@ -201,7 +184,8 @@ def upload_zip():
 
         if success:
             os.remove(file_path)
-            return jsonify({'message': 'Files uploaded successfully'})
+            # Возвращаем имя альбома, которое мы знаем
+            return jsonify({'message': 'Files uploaded successfully', 'album_name': safe_zip_name.replace('.zip', '')})
         else:
             return jsonify({'error': 'Failed to process ZIP file'}), 500
 
@@ -236,24 +220,6 @@ def api_links(album_name, article_number):
     limit = int(request.args.get('limit', 20))
     links = get_published_links(album_name, article_number, offset, limit)
     return jsonify(links)
-
-
-@app.route('/api/publish/<filename>', methods=['POST'])
-def api_publish(filename):
-    publish_file(filename)
-    return jsonify({'message': 'File published'})
-
-
-@app.route('/api/unpublish/<filename>', methods=['POST'])
-def api_unpublish(filename):
-    unpublish_file(filename)
-    return jsonify({'message': 'File unpublished'})
-
-
-@app.route('/static/<path:filename>')
-def static_files(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
 
 if __name__ == '__main__':
     init_db()

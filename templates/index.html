@@ -1,10 +1,10 @@
 <!-- templates/index.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StashLink — Upload & Manage</title>
+    <title>PicHost — Хостинг изображений</title>
     <style>
         * {
             margin: 0;
@@ -101,6 +101,17 @@
         .btn-success:hover {
             background: #27ae60;
         }
+        .btn-copy {
+            background: #95a5a6;
+            padding: 6px 12px;
+            font-size: 0.9rem;
+        }
+        .btn-copy:hover {
+            background: #7f8c8d;
+        }
+        .btn-copy.copied {
+            background: #2ecc71;
+        }
 
         .links-section h2 {
             margin-bottom: 16px;
@@ -116,20 +127,44 @@
             padding-right: 8px;
         }
         .link-item {
-            padding: 12px 0;
+            padding: 16px 0;
             border-bottom: 1px solid #ecf0f1;
         }
         .link-item:last-child {
             border-bottom: none;
         }
-        .link-item a {
-            color: #3498db;
-            text-decoration: none;
-            word-break: break-all;
-            display: block;
+        .link-preview {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
         }
-        .link-item a:hover {
-            text-decoration: underline;
+        .link-preview img {
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+        .link-url {
+            flex: 1;
+        }
+        .link-url-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            background: #f8f9fa;
+        }
+        .file-info {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 4px;
+        }
+        .copy-btn {
+            white-space: nowrap;
         }
 
         .empty-state {
@@ -146,29 +181,39 @@
             .column-right {
                 flex: 1;
             }
+            .link-preview {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .link-preview img {
+                align-self: center;
+            }
         }
     </style>
+    <script>
+        window.SERVERNAME = "{{ SERVERNAME }}";
+    </script>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>📁 StashLink</h1>
-            <p class="subtitle">Upload ZIP archives and manage your file links</p>
+            <h2>📁 PicHost — Хостинг изображений</h2>
+            <p class="subtitle">Загрузите ZIP-архив с изображениями для получения прямых ссылок</p>
         </header>
 
         <div class="columns">
             <div class="column-left">
                 <div class="card">
-                    <h2>📤 Upload ZIP Archive</h2>
+                    <h2>📤 Загрузите ZIP-архив</h2>
                     <form id="uploadForm" enctype="multipart/form-data">
                         <div class="upload-area" id="dropArea">
-                            <p>Drag & drop your ZIP file here</p>
-                            <p>or</p>
-                            <button type="button" class="btn" id="browseBtn">Browse Files</button>
+                            <p>Перетащите ZIP-архив сюда</p>
+                            <p>или</p>
+                            <button type="button" class="btn" id="browseBtn">Выбрать файл</button>
                             <input type="file" id="zipFile" name="zipfile" accept=".zip" class="file-input">
                         </div>
                         <button type="submit" class="btn" id="uploadBtn" disabled>
-                            <span>Upload Archive</span>
+                            <span>Загрузить архив</span>
                         </button>
                     </form>
                 </div>
@@ -177,11 +222,10 @@
             <div class="column-right">
                 <div class="card links-section">
                     <h2>
-                        <span id="currentAlbumTitle">All Files</span>
-                        <button id="generateBtn" class="btn btn-success" style="padding: 6px 12px; font-size: 0.9rem;">Generate XLSX</button>
+                        <span id="currentAlbumTitle">Прямые ссылки на изображения</span>
                     </h2>
                     <ul id="linkList" class="link-list">
-                        <div class="empty-state">Upload a ZIP archive to see files.</div>
+                        <div class="empty-state">Загрузите ZIP-архив, чтобы получить прямые ссылки на изображения</div>
                     </ul>
                 </div>
             </div>
