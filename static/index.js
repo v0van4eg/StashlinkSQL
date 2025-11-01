@@ -57,10 +57,20 @@ zipFileInput.addEventListener('change', () => {
     updateUI();
 });
 
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 function updateUI() {
     const file = droppedFile || (zipFileInput.files[0] || null);
     if (file) {
-        dropArea.innerHTML = `<p>Выбран файл: <strong>${file.name}</strong></p><p>Готов к загрузке</p>`;
+        const fileSize = formatFileSize(file.size);
+        // Показываем имя файла и его размер перед "Готов к загрузке"
+        dropArea.innerHTML = `<p>Выбран файл: <strong>${file.name}</strong></p><p>Размер: ${fileSize}</p><p>Готов к загрузке</p>`;
         uploadBtn.disabled = false;
     } else {
         dropArea.innerHTML = `<p>Перетащите ZIP-архив сюда</p><p>или</p><button type="button" class="btn" id="browseBtn">Выбрать файл</button>`;
@@ -231,57 +241,6 @@ async function showFilesForAlbum(albumName) {
         linkList.innerHTML = `<div class="empty-state">Ошибка загрузки файлов для "${albumName}".</div>`;
     }
 }
-
-// --- Добавленный JavaScript для отображения информации о файле ---
-const zipFileInput = document.getElementById('zipFile');
-const browseBtn = document.getElementById('browseBtn');
-const fileInfoContainer = document.getElementById('fileInfoContainer');
-const fileNameDisplay = document.getElementById('fileNameDisplay');
-const fileSizeDisplay = document.getElementById('fileSizeDisplay');
-
-function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-function handleFileSelection(file) {
-    if (file) {
-        fileNameDisplay.textContent = file.name;
-        fileSizeDisplay.textContent = formatFileSize(file.size);
-        fileInfoContainer.style.display = 'block';
-    } else {
-        fileInfoContainer.style.display = 'none';
-    }
-}
-
-// Событие при выборе файла через input
-zipFileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    handleFileSelection(file);
-});
-
-// Событие при выборе файла через drag-and-drop (предполагаем, что droppedFile обновляется в index.js)
-// window.droppedFile может быть не доступен сразу, поэтому используем глобальный объект или инициализируем позже
-// Альтернатива - вызов из updateUI в index.js
-window.updateFileInfoDisplay = function(file) {
-     handleFileSelection(file);
-}
-
-// Обновляем информацию при клике по кнопке "Выбрать файл", чтобы очистить старую информацию
-browseBtn.addEventListener('click', () => {
-     // Информация очистится, когда файл будет выбран или сброшен в index.js
-     // fileInfoContainer.style.display = 'none';
-     // Для очистки при сбросе файла, добавим обработчик на сброс
-     zipFileInput.value = ''; // Сбросим значение input
-     // index.js обновит UI, и мы можем сбросить информацию там же или здесь
-     // Лучше сбросить в updateUI, вызываем updateFileInfoDisplay с null
-     // Но для этого нужно вмешательство в index.js
-});
-
-// --- Конец добавленного JavaScript ---
 
 // Initial state
 linkList.innerHTML = '<div class="empty-state">Загрузите ZIP-архив, чтобы получить прямые ссылки на изображения</div>';
