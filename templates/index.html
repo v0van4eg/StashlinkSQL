@@ -1,37 +1,193 @@
-<!-- web/templates/index.html -->
+<!-- templates/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Index Page</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StashLink — Upload & Manage</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; display: flex; }
-        .left-column { width: 50%; padding: 20px; border-right: 1px solid #ccc; }
-        .right-column { width: 50%; padding: 20px; }
-        .upload-area { border: 2px dashed #ccc; padding: 20px; text-align: center; margin-bottom: 20px; }
-        .btn { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; cursor: pointer; margin-top: 10px; }
-        .btn:hover { background-color: #45a049; }
-        .link-list { list-style-type: none; padding: 0; }
-        .link-item { padding: 10px; border-bottom: 1px solid #eee; }
-        .link-item a { text-decoration: none; color: #007BFF; }
-        .link-item a:hover { text-decoration: underline; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body {
+            background: #f8f9fa;
+            color: #333;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        h1 {
+            font-size: 2.2rem;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+        .subtitle {
+            color: #7f8c8d;
+            font-size: 1.1rem;
+        }
+
+        .columns {
+            display: flex;
+            gap: 24px;
+        }
+
+        .column-left {
+            flex: 0 0 25%;
+            min-width: 0;
+        }
+
+        .column-right {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            padding: 24px;
+            height: fit-content;
+        }
+
+        .upload-area {
+            border: 2px dashed #bdc3c7;
+            border-radius: 10px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #fafafa;
+            margin-bottom: 20px;
+        }
+        .upload-area:hover, .upload-area.drag-over {
+            border-color: #3498db;
+            background: #f0f8ff;
+        }
+        .file-input {
+            display: none;
+        }
+        .btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn:hover {
+            background: #2980b9;
+        }
+        .btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .btn-success {
+            background: #2ecc71;
+        }
+        .btn-success:hover {
+            background: #27ae60;
+        }
+
+        .links-section h2 {
+            margin-bottom: 16px;
+            color: #2c3e50;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .link-list {
+            list-style: none;
+            max-height: 600px;
+            overflow-y: auto;
+            padding-right: 8px;
+        }
+        .link-item {
+            padding: 12px 0;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        .link-item:last-child {
+            border-bottom: none;
+        }
+        .link-item a {
+            color: #3498db;
+            text-decoration: none;
+            word-break: break-all;
+            display: block;
+        }
+        .link-item a:hover {
+            text-decoration: underline;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 0;
+            color: #95a5a6;
+        }
+
+        @media (max-width: 900px) {
+            .columns {
+                flex-direction: column;
+            }
+            .column-left,
+            .column-right {
+                flex: 1;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="left-column">
-        <h2>Upload ZIP Archive</h2>
-        <form id="uploadForm" enctype="multipart/form-data">
-            <div class="upload-area" id="dropArea">
-                Drag & Drop ZIP file here or click to browse
-                <input type="file" id="zipFile" name="zipfile" accept=".zip" style="display:none;">
+    <div class="container">
+        <header>
+            <h1>📁 StashLink</h1>
+            <p class="subtitle">Upload ZIP archives and manage your file links</p>
+        </header>
+
+        <div class="columns">
+            <div class="column-left">
+                <div class="card">
+                    <h2>📤 Upload ZIP Archive</h2>
+                    <form id="uploadForm" enctype="multipart/form-data">
+                        <div class="upload-area" id="dropArea">
+                            <p>Drag & drop your ZIP file here</p>
+                            <p>or</p>
+                            <button type="button" class="btn" id="browseBtn">Browse Files</button>
+                            <input type="file" id="zipFile" name="zipfile" accept=".zip" class="file-input">
+                        </div>
+                        <button type="submit" class="btn" id="uploadBtn" disabled>
+                            <span>Upload Archive</span>
+                        </button>
+                    </form>
+                </div>
             </div>
-            <button type="submit" class="btn">Upload Files</button>
-        </form>
+
+            <div class="column-right">
+                <div class="card links-section">
+                    <h2>
+                        <span id="currentAlbumTitle">All Files</span>
+                        <button id="generateBtn" class="btn btn-success" style="padding: 6px 12px; font-size: 0.9rem;">Generate XLSX</button>
+                    </h2>
+                    <ul id="linkList" class="link-list">
+                        <div class="empty-state">Upload a ZIP archive to see files.</div>
+                    </ul>
+                </div>
+            </div>
+        </div>
     </div>
-    <div class="right-column">
-        <h2>Published Links</h2>
-        <ul id="linkList" class="link-list"></ul>
-        <button id="generateBtn" class="btn">Generate XLSX Document</button>
-    </div>
-    <script src="static/index.js"></script></body>
+
+    <script src="/static/index.js"></script>
+</body>
 </html>

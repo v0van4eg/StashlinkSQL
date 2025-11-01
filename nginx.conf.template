@@ -1,0 +1,127 @@
+# Сервер dev
+server {
+    listen 80;
+    server_name vladimir-hp vladimir-hp.gradient.ru tecnobook;
+    client_max_body_size ${MAX_UPLOAD_SIZE};
+
+    # Проксирование запросов к Flask приложению
+    location /admin {
+#        auth_basic "Административный раздел";
+#        auth_basic_user_file /etc/nginx/htpasswd;
+        proxy_pass http://localhost:5000/admin;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # --- НОВОЕ: Увеличение таймаутов ---
+        proxy_connect_timeout       300s; # Таймаут соединения с бэкендом
+        proxy_send_timeout          300s; # Таймаут между двумя операциями записи в бэкенд
+        proxy_read_timeout          300s; # Таймаут между двумя операциями чтения из бэкенда
+        # --- /НОВОЕ ---
+    }
+
+    # Обслуживание загруженных изображений
+    location /images/ {
+        alias /app/uploads/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        add_header Access-Control-Allow-Origin "*";
+    }
+
+    location /static/ {
+        alias /app/static/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location = / {
+        root /app/templates;
+        try_files /hello.html =404;
+    }
+}
+
+# Сервер для админки на gradient.ru
+server {
+    listen 80;
+    server_name stashlink.gradient.ru;
+    client_max_body_size ${MAX_UPLOAD_SIZE};
+
+    # Проксирование запросов к Flask приложению
+    location /admin {
+        auth_basic "Административный раздел";
+        auth_basic_user_file /etc/nginx/htpasswd;
+        proxy_pass http://localhost:5000/admin;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+            # --- НОВОЕ: Увеличение таймаутов ---
+        proxy_connect_timeout       300s; # Таймаут соединения с бэкендом
+        proxy_send_timeout          300s; # Таймаут между двумя операциями записи в бэкенд
+        proxy_read_timeout          300s; # Таймаут между двумя операциями чтения из бэкенда
+        # --- /НОВОЕ ---
+    }
+
+    # Статические файлы Flask приложения
+    location /static/ {
+        alias /app/static/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location = / {
+        root /app/templates;
+        try_files /hello.html =404;
+    }
+}
+
+# Сервер для изображений на mooo.com
+server {
+    listen 80;
+    server_name stashlink.mooo.com;
+    client_max_body_size ${MAX_UPLOAD_SIZE};
+
+    # Обслуживание загруженных изображений
+    location /images/ {
+        alias /app/uploads/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        add_header Access-Control-Allow-Origin "*";
+    }
+
+    # Статические файлы приложения
+    location /static/ {
+        alias /app/static/;
+        expires 30d;
+    }
+
+    # Обслуживание корневого пути - отдача hello.html
+    location = / {
+        root /app/templates;
+        try_files /hello.html =404;
+    }
+
+    # Все остальные запросы редиректим на основную страницу
+    location / {
+        return 301 /;
+    }
+}
+
+# Сервер по умолчанию - для доступа по IP
+server {
+    listen 80 default_server;
+    server_name _;
+    client_max_body_size ${MAX_UPLOAD_SIZE};
+
+    # Обслуживание корневого пути - отдача hello.html
+    location = / {
+        root /app/templates;
+        try_files /hello.html =404;
+    }
+
+    # Все остальные запросы тоже возвращают hello.html
+    location / {
+        root /app/templates;
+        try_files /hello.html =404;
+    }
+}
