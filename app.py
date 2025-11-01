@@ -98,6 +98,13 @@ def process_zip(zip_path):
             # Извлечение архива
             zip_ref.extractall(album_path)
 
+            # Удаление старых записей для этого альбома из БД
+            conn = sqlite3.connect('files.db')
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM files WHERE album_name = ?", (album_name,))
+            conn.commit()
+            conn.close()
+
             # Проход по всем файлам в альбоме
             for root, dirs, files in os.walk(album_path):
                 # Проверяем, что мы находимся в подкаталоге альбома (не в самом альбоме)

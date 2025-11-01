@@ -135,7 +135,7 @@
             border-bottom: none;
         }
         .article-header {
-            background-color: #e9ecef; /* Серый фон */
+            background-color: #0cb; /* Серый фон */
             padding: 10px 15px;
             margin: 10px 0 5px 0; /* Отступы сверху и снизу */
             font-weight: bold;
@@ -183,6 +183,28 @@
             color: #6c757d;
         }
 
+        /* Стили для прогресс-бара */
+        #progressContainer {
+            display: none; /* Скрыт по умолчанию */
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        #progressBar {
+            height: 20px;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
         @media (max-width: 900px) {
             .columns {
                 flex-direction: column;
@@ -222,6 +244,12 @@
                         <button type="submit" class="btn" id="uploadBtn" disabled>
                             <span>Загрузить архив</span>
                         </button>
+                        <!-- Прогресс-бар -->
+                        <div id="progressContainer">
+                            <div id="progressBar">
+                                <span id="progressText">0%</span>
+                            </div>
+                        </div>
                     </form>
                 </div>
             </div>

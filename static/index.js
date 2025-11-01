@@ -14,7 +14,7 @@ function formatFileSize(bytes) {
 let droppedFile = null;
 let currentAlbumName = null;
 // DOM elements (получаем их один раз после загрузки DOM)
-let dropArea, zipFileInput, browseBtn, uploadBtn, uploadForm, linkList, currentAlbumTitle;
+let dropArea, zipFileInput, browseBtn, uploadBtn, uploadForm, linkList, currentAlbumTitle, progressContainer, progressBar, progressText;
 // --- Конец глобальных переменных ---
 
 // --- Вспомогательная функция ---
@@ -35,8 +35,12 @@ function initializeElements() {
     uploadForm = document.getElementById('uploadForm');
     linkList = document.getElementById('linkList');
     currentAlbumTitle = document.getElementById('currentAlbumTitle');
+    // Элементы прогресс-бара
+    progressContainer = document.getElementById('progressContainer');
+    progressBar = document.getElementById('progressBar');
+    progressText = document.getElementById('progressText');
 
-    if (!dropArea || !zipFileInput || !browseBtn || !uploadBtn || !uploadForm || !linkList || !currentAlbumTitle) {
+    if (!dropArea || !zipFileInput || !browseBtn || !uploadBtn || !uploadForm || !linkList || !currentAlbumTitle || !progressContainer || !progressBar || !progressText) {
         console.error('One or more required DOM elements not found!');
         return false;
     }
@@ -307,34 +311,72 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData();
         formData.append('zipfile', file, file.name);
 
+        // Показываем прогресс-бар
+        progressContainer.style.display = 'block';
         uploadBtn.disabled = true;
         uploadBtn.innerHTML = '<span>Загрузка...</span>';
 
-        try {
-            const response = await fetch('/upload', { method: 'POST', body: formData });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        // Создаем объект XMLHttpRequest для отслеживания прогресса
+        const xhr = new XMLHttpRequest();
 
-            let albumName = data.album_name || file.name.replace(/\.zip$/i, '');
-            currentAlbumName = albumName;
-            showFilesForAlbum(albumName);
+        // Обработчик прогресса отправки
+        xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+                const percentComplete = (e.loaded / e.total) * 100;
+                progressBar.style.width = percentComplete + '%';
+                progressText.textContent = Math.round(percentComplete) + '%';
+            }
+        });
 
-            // --- Сброс области загрузки в исходное состояние ---
-            zipFileInput.value = ''; // Очистить input
-            droppedFile = null;      // Сбросить переменную droppedFile
-            updateUI();              // Обновить UI до начального состояния
-            // --- Конец сброса ---
+        // Обработчик завершения запроса
+        xhr.addEventListener('load', function() {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    if (!data.error) {
+                        let albumName = data.album_name || file.name.replace(/\.zip$/i, '');
+                        currentAlbumName = albumName;
+                        showFilesForAlbum(albumName);
 
-
-        } catch (error) {
-            console.error('Upload failed:', error);
-            alert(`Ошибка загрузки: ${error.message}`);
-        } finally {
+                        // --- Сброс области загрузки в исходное состояние ---
+                        zipFileInput.value = ''; // Очистить input
+                        droppedFile = null;      // Сбросить переменную droppedFile
+                        updateUI();              // Обновить UI до начального состояния
+                        // --- Конец сброса ---
+                    } else {
+                        console.error('Upload failed:', data.error);
+                        alert(`Ошибка загрузки: ${data.error}`);
+                    }
+                } catch (error) {
+                    console.error('JSON parse failed:', error);
+                    alert('Ошибка: получен некорректный ответ от сервера.');
+                }
+            } else {
+                console.error('Upload failed with status:', xhr.status);
+                alert(`Ошибка загрузки: HTTP ${xhr.status}`);
+            }
+            // Скрываем прогресс-бар
+            progressContainer.style.display = 'none';
             // Сброс состояния кнопки загрузки
             uploadBtn.disabled = false;
             uploadBtn.innerHTML = '<span>Загрузить архив</span>';
-            // zipFileInput.value и droppedFile сбрасываются в блоке try после успешной загрузки
-        }
+        });
+
+        // Обработчик ошибки запроса
+        xhr.addEventListener('error', function() {
+            console.error('Upload failed due to network error');
+            alert('Ошибка сети при загрузке файла.');
+            // Скрываем прогресс-бар
+            progressContainer.style.display = 'none';
+            // Сброс состояния кнопки загрузки
+            uploadBtn.disabled = false;
+            uploadBtn.innerHTML = '<span>Загрузить архив</span>';
+        });
+
+        // Отправляем запрос
+        xhr.open('POST', '/upload');
+        xhr.send(formData);
+
     });
     // --- Конец обработчика отправки формы ---
 
