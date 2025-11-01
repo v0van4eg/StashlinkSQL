@@ -76,34 +76,78 @@ function updateUI() {
 
 // --- Функция копирования в буфер обмена ---
 function copyToClipboard(text, button) {
-    navigator.clipboard.writeText(text).then(() => {
-        const originalText = button.textContent;
-        button.textContent = 'Скопировано!';
-        button.classList.add('copied');
+    // Попытка использовать современный API Clipboard API
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+            console.log('Скопировано через Clipboard API');
+            updateButtonState(button);
+        }).catch(err => {
+            console.error('Ошибка Clipboard API:', err);
+            // Если Clipboard API не сработал, переходим к резервному методу
+            fallbackCopyTextToClipboard(text, button);
+        });
+    } else {
+        // Резервный метод для старых браузеров или небезопасных контекстов
+        console.warn('Clipboard API недоступен, используется резервный метод.');
+        fallbackCopyTextToClipboard(text, button);
+    }
+}
 
-        setTimeout(() => {
-            button.textContent = originalText;
-            button.classList.remove('copied');
-        }, 2000);
-    }).catch(err => {
-        console.error('Failed to copy: ', err);
-        // Fallback для старых браузеров
-        const textArea = document.createElement('textarea');
-        textArea.value = text;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
+// Резервный метод копирования
+function fallbackCopyTextToClipboard(text, button) {
+    // Создаем временный textarea элемент
+    const textArea = document.createElement("textarea");
+    // Устанавливаем текст, который нужно скопировать
+    textArea.value = text;
+    // Делаем элемент небольшим и невидимым
+    textArea.style.cssText = `
+        position: fixed;
+        top: -9999px;
+        left: -9999px;
+        width: 2em;
+        height: 2em;
+        z-index: 10000;
+        opacity: 0;
+        pointer-events: none;
+    `;
 
-        const originalText = button.textContent;
-        button.textContent = 'Скопировано!';
-        button.classList.add('copied');
+    // Добавляем textarea в DOM
+    document.body.appendChild(textArea);
 
-        setTimeout(() => {
-            button.textContent = originalText;
-            button.classList.remove('copied');
-        }, 2000);
-    });
+    // Выделяем текст в textarea
+    textArea.focus();
+    textArea.select();
+
+    try {
+        // Выполняем команду "copy"
+        const successful = document.execCommand('copy');
+        if (successful) {
+            console.log('Скопировано через execCommand');
+            updateButtonState(button);
+        } else {
+            console.error('execCommand copy не удался');
+            // Можно показать сообщение пользователю, что копирование не удалось
+            alert('Не удалось скопировать текст. Пожалуйста, скопируйте вручную.');
+        }
+    } catch (err) {
+        console.error('Exception при выполнении execCommand copy:', err);
+        alert('Не удалось скопировать текст. Пожалуйста, скопируйте вручную.');
+    }
+
+    // Удаляем временный textarea из DOM
+    document.body.removeChild(textArea);
+}
+
+// Вспомогательная функция для обновления состояния кнопки
+function updateButtonState(button) {
+    const originalText = button.textContent;
+    button.textContent = 'Скопировано!';
+    button.classList.add('copied');
+
+    setTimeout(() => {
+        button.textContent = originalText;
+        button.classList.remove('copied');
+    }, 2000);
 }
 // --- Конец функции копирования ---
 
