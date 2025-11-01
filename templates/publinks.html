@@ -1,0 +1,40 @@
+<!-- web/templates/publinks.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Published Links</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; display: flex; }
+        .left-column { width: 50%; padding: 20px; border-right: 1px solid #ccc; }
+        .right-column { width: 50%; padding: 20px; }
+        select { width: 100%; padding: 10px; margin-bottom: 10px; }
+        .link-list { list-style-type: none; padding: 0; height: 400px; overflow-y: auto; }
+        .link-item { padding: 10px; border-bottom: 1px solid #eee; }
+        .link-item a { text-decoration: none; color: #007BFF; }
+        .link-item a:hover { text-decoration: underline; }
+        .btn { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; cursor: pointer; margin-top: 10px; }
+        .btn:hover { background-color: #45a049; }
+        .load-more-btn { display: block; width: 100%; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="left-column">
+        <h2>Select Album and Article</h2>
+        <select id="albumSelect" onchange="onAlbumChange()">
+            <option value="">Select Album</option>
+        </select>
+        <select id="articleSelect" onchange="onArticleChange()" disabled>
+            <option value="">Select Article</option>
+        </select>
+        <button onclick="goBack()" class="btn">Back to Uploads</button>
+    </div>
+    <div class="right-column">
+        <h2>Published Links</h2>
+        <ul id="linkList" class="link-list"></ul>
+        <button id="loadMoreBtn" class="btn load-more-btn" onclick="loadMore()">Load More</button>
+        <button id="generateBtn" class="btn">Generate XLSX Document</button>
+    </div>
+    <script src="static/publinks.js"></script>
+</body>
+</html>

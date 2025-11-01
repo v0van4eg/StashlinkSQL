@@ -1,0 +1,7 @@
+album.zip
+    ├── article1/
+    │   ├── article1_num1.jpg
+    │   └── article2_num2.jpg
+    └── article2/
+    │   ├── article1_num1.jpg
+    │   └── article2_num2.jpg

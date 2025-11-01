@@ -1,0 +1,722 @@
+Дерево каталога: /home/poly/PycharmProjects/StashlinkSQL
+
+├── app.py
+├── static
+│   ├── index.js
+│   └── publinks.js
+├── task.txt
+├── templates
+│   ├── index.html
+│   └── publinks.html
+
+
+СОДЕРЖИМОЕ ФАЙЛОВ:
+
+##################################### app.py #####################################
+# app/main.py
+import os
+import zipfile
+import json
+import shutil
+from pathlib import Path
+from flask import Flask, request, jsonify, render_template, send_from_directory
+from werkzeug.utils import secure_filename
+import uuid
+import sqlite3
+from datetime import datetime
+import logging
+import re
+import unicodedata # Импортируем unicodedata
+
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 * 1024
+# Ensure upload directory exists
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- Исправленная версия функции нормализации ---
+import re
+import unicodedata
+
+# --- Исправленная версия функции нормализации ---
+def normalize_name(name: str) -> str:
+    """
+    Преобразует строку в безопасное имя папки с поддержкой кириллицы.
+    """
+    if not name:
+        return "unnamed"
+    # Нормализация Unicode
+    name = unicodedata.normalize('NFKC', name)
+    # Удаляем только действительно проблемные символы, сохраняя кириллицу, латиницу, цифры, пробелы, дефисы, подчеркивания
+    # \w в re.UNICODE включает буквы (включая кириллические) и цифры
+    name = re.sub(r'[^\w\s\-_]', '', name, flags=re.UNICODE)
+    # Заменяем пробелы на дефисы
+    name = re.sub(r'[\s]+', '-', name)
+    # Убираем множественные дефисы
+    name = re.sub(r'-+', '-', name)
+    # Обрезаем дефисы в начале и конце
+    name = name.strip('-')
+    # Обрезка до 255 символов
+    name = name[:255] if name else "unnamed"
+    return name
+
+
+# Initialize SQLite database
+def init_db():
+    conn = sqlite3.connect('files.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT NOT NULL, -- Хранит относительный путь к файлу в uploads: album/article/original_filename.ext
+            album_name TEXT NOT NULL,
+            article_number TEXT NOT NULL,
+            published BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+
+# Get unique album names
+def get_albums():
+    conn = sqlite3.connect('files.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT album_name FROM files")
+    albums = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return albums
+
+
+# Get articles for an album
+def get_articles(album_name):
+    conn = sqlite3.connect('files.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT article_number FROM files WHERE album_name=?", (album_name,))
+    articles = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return articles
+
+
+# Get published links for an album and article
+def get_published_links(album_name, article_number, offset=0, limit=20):
+    conn = sqlite3.connect('files.db')
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT filename, created_at FROM files 
+        WHERE album_name=? AND article_number=? AND published=1
+        ORDER BY created_at DESC LIMIT ? OFFSET ?
+    """, (album_name, article_number, limit, offset))
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+
+# Publish a file
+def publish_file(filename):
+    conn = sqlite3.connect('files.db')
+    cursor = conn.cursor()
+    cursor.execute("UPDATE files SET published=1 WHERE filename=?", (filename,))
+    conn.commit()
+    conn.close()
+
+
+# Unpublish a file
+def unpublish_file(filename):
+    conn = sqlite3.connect('files.db')
+    cursor = conn.cursor()
+    cursor.execute("UPDATE files SET published=0 WHERE filename=?", (filename,))
+    conn.commit()
+    conn.close()
+
+
+# Get all published files
+def get_all_published_files():
+    conn = sqlite3.connect('files.db')
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT filename, album_name, article_number, created_at FROM files WHERE published=1 ORDER BY created_at DESC")
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+# Get all files (published and unpublished)
+def get_all_files():
+    conn = sqlite3.connect('files.db')
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT filename, album_name, article_number, created_at, published FROM files ORDER BY created_at DESC")
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+
+# Process uploaded ZIP file
+# Process uploaded ZIP file
+def process_zip(zip_path):
+    try:
+        with zipfile.ZipFile(zip_path, 'r', metadata_encoding='utf-8') as zip_ref:
+            # Get album name from zip file name and normalize it
+            album_name_raw = os.path.splitext(os.path.basename(zip_path))[0]
+            # Используем нормализованное имя архива для создания каталога
+            album_name = normalize_name(album_name_raw)
+
+            # Determine the base path for this album within uploads
+            album_path = os.path.join(app.config['UPLOAD_FOLDER'], album_name)
+            os.makedirs(album_path, exist_ok=True)
+
+            # Extract all files into the album directory
+            zip_ref.extractall(album_path)
+
+            # Walk through the extracted album directory to find article subdirectories
+            for root, dirs, files in os.walk(album_path):
+                # Calculate the relative path from the album directory to the current directory
+                rel_path = os.path.relpath(root, album_path)
+                if rel_path == '.': # Skip the album root directory itself
+                     continue
+                # The immediate parent directory under album is the article directory
+                if os.path.dirname(rel_path) == '.' or rel_path.count(os.sep) == 0:
+                    # Normalize the article folder name
+                    article_folder_name_raw = os.path.basename(root)
+                    article_folder_name = normalize_name(article_folder_name_raw)
+
+                    # Rename the directory to the normalized name if it's different
+                    original_article_path = root
+                    normalized_article_path = os.path.join(os.path.dirname(root), article_folder_name)
+                    if original_article_path != normalized_article_path:
+                        os.rename(original_article_path, normalized_article_path)
+                        # Update root to the new path for subsequent operations
+                        root = normalized_article_path
+
+                    if files: # Only process directories that contain files
+                        # Process each file in the current (potentially renamed) article folder
+                        for file_name in files:
+                            file_path = os.path.join(root, file_name)
+
+                            if os.path.isfile(file_path):
+                                # Store the relative path from uploads directory in the database
+                                # It will be like album_name/normalized_article_name/original_filename.ext
+                                relative_file_path = os.path.relpath(file_path, app.config['UPLOAD_FOLDER'])
+
+                                # Insert into database
+                                conn = sqlite3.connect('files.db')
+                                cursor = conn.cursor()
+                                cursor.execute(
+                                    "INSERT INTO files (filename, album_name, article_number) VALUES (?, ?, ?)",
+                                    (relative_file_path, album_name, article_folder_name)
+                                )
+                                conn.commit()
+                                conn.close()
+
+            return True
+    except Exception as e:
+        logger.error(f"Error processing ZIP file: {e}")
+        return False
+
+# Routes
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+@app.route('/publinks')
+def publinks():
+    return render_template('publinks.html')
+
+
+@app.route('/upload', methods=['POST'])
+def upload_zip():
+    if 'zipfile' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    file = request.files['zipfile']
+
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    if file:
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+
+        success = process_zip(file_path)
+
+        if success:
+            os.remove(file_path)  # Remove original zip after processing
+            return jsonify({'message': 'Files uploaded successfully'})
+        else:
+            return jsonify({'error': 'Failed to process ZIP file'}), 500
+
+
+@app.route('/api/published')
+def api_published():
+    files = get_all_published_files()
+    return jsonify(files)
+
+
+@app.route('/api/files')
+def api_files():
+    """API endpoint to get all files (published and unpublished)"""
+    files = get_all_files()
+    return jsonify(files)
+
+
+@app.route('/api/albums')
+def api_albums():
+    albums = get_albums()
+    return jsonify(albums)
+
+
+@app.route('/api/articles/<album_name>')
+def api_articles(album_name):
+    articles = get_articles(album_name)
+    return jsonify(articles)
+
+
+@app.route('/api/links/<album_name>/<article_number>')
+def api_links(album_name, article_number):
+    offset = int(request.args.get('offset', 0))
+    limit = int(request.args.get('limit', 20))
+    links = get_published_links(album_name, article_number, offset, limit)
+    return jsonify(links)
+
+
+@app.route('/api/publish/<filename>', methods=['POST'])
+def api_publish(filename):
+    publish_file(filename)
+    return jsonify({'message': 'File published'})
+
+
+@app.route('/api/unpublish/<filename>', methods=['POST'])
+def api_unpublish(filename):
+    unpublish_file(filename)
+    return jsonify({'message': 'File unpublished'})
+
+
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    # filename is now the full relative path like album_name/article_name/original_filename.ext
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+
+if __name__ == '__main__':
+    init_db()  # Initialize database on startup
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
+
+##################################### task.txt #####################################
+album.zip
+    ├── article1/
+    │   ├── article1_num1.jpg
+    │   └── article2_num2.jpg
+    └── article2/
+    │   ├── article1_num1.jpg
+    │   └── article2_num2.jpg
+
+
+##################################### static/index.js #####################################
+// Handle drag and drop
+const dropArea = document.getElementById('dropArea');
+const zipFileInput = document.getElementById('zipFile');
+const uploadForm = document.getElementById('uploadForm');
+const submitButton = uploadForm.querySelector('button[type="submit"]');
+let droppedFile = null; // Store the dropped file separately
+
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    dropArea.addEventListener(eventName, preventDefaults, false);
+});
+
+function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+['dragenter', 'dragover'].forEach(eventName => {
+    dropArea.addEventListener(eventName, highlight, false);
+});
+
+['dragleave', 'drop'].forEach(eventName => {
+    dropArea.addEventListener(eventName, unhighlight, false);
+});
+
+function highlight() {
+    dropArea.style.backgroundColor = '#f0f0f0';
+    dropArea.style.borderColor = '#007BFF'; // Change border color on drag over
+}
+
+function unhighlight() {
+    dropArea.style.backgroundColor = '';
+    dropArea.style.borderColor = '#ccc'; // Reset border color
+}
+
+dropArea.addEventListener('drop', handleDrop, false);
+
+function handleDrop(e) {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    if (files.length) {
+        // Optional: Check file type
+        const file = files[0];
+        if (file.type !== 'application/zip' && !file.name.toLowerCase().endsWith('.zip')) {
+            alert('Please drop a valid ZIP file.');
+            return;
+        }
+        // Store the dropped file
+        droppedFile = file;
+        // Update display
+        dropArea.innerHTML = `Selected file: ${file.name}`;
+    }
+}
+
+// Click handler for file input
+dropArea.addEventListener('click', (e) => {
+    // Prevent clicking the button from triggering the file input click if clicked directly
+    if (e.target !== submitButton) {
+        zipFileInput.click();
+    }
+});
+
+zipFileInput.addEventListener('change', function() {
+    // When file is selected via click, reset the dropped file
+    droppedFile = null;
+    updateFileNameDisplay();
+});
+
+function updateFileNameDisplay() {
+    if (zipFileInput.files.length > 0 && !droppedFile) {
+        dropArea.innerHTML = `Selected file: ${zipFileInput.files[0].name}`;
+    } else if (droppedFile) {
+        // If a file was dropped, display its name
+        dropArea.innerHTML = `Selected file: ${droppedFile.name}`;
+    } else {
+        dropArea.innerHTML = 'Drag & Drop ZIP file here or click to browse';
+    }
+}
+
+// Upload form submission
+uploadForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    let fileToUpload = null;
+    if (droppedFile) {
+        fileToUpload = droppedFile;
+    } else if (zipFileInput.files[0]) {
+        fileToUpload = zipFileInput.files[0];
+    }
+
+    if (!fileToUpload) {
+        alert('Please select a ZIP file to upload.');
+        return;
+    }
+
+    // Optional: Check file type again on submit
+    if (fileToUpload.type !== 'application/zip' && !fileToUpload.name.toLowerCase().endsWith('.zip')) {
+        alert('Please select a valid ZIP file.');
+        return;
+    }
+
+    // Create FormData and append the correct file
+    const formData = new FormData();
+    formData.append('zipfile', fileToUpload, fileToUpload.name); // Explicitly append the file
+
+    // Disable button and show loading state
+    submitButton.disabled = true;
+    submitButton.textContent = 'Uploading...';
+
+    fetch('/upload', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            // Try to get error message from response body
+            return response.json().then(data => {
+                throw new Error(data.error || `HTTP error! status: ${response.status}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        alert(data.message || 'Upload successful!');
+        if (!data.error) {
+            refreshLinks(); // Refresh links after successful upload
+            // Reset file state after successful upload
+            zipFileInput.value = ''; // Clear the input
+            droppedFile = null; // Clear the dropped file
+            updateFileNameDisplay(); // Reset display
+        }
+    })
+    .catch(error => {
+        console.error('Upload Error:', error);
+        alert(`An error occurred during upload: ${error.message}`);
+    })
+    .finally(() => {
+        // Re-enable button and reset text
+        submitButton.disabled = false;
+        submitButton.textContent = 'Upload Files';
+    });
+});
+
+// Fetch and display ALL uploaded links (published and unpublished)
+function refreshLinks() {
+    fetch('/api/files') // Используем новый endpoint /api/files
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        const linkList = document.getElementById('linkList');
+        linkList.innerHTML = '';
+        data.forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'link-item';
+            const link = document.createElement('a');
+            link.href = `/static/${item[0]}`; // Assuming files are stored in uploads directory
+            // Display album, article, and filename
+            link.textContent = `${item[1]} - ${item[2]} - ${item[0]}`;
+            link.target = '_blank';
+            li.appendChild(link);
+
+            // Добавляем кнопку публикации/снятия публикации
+            const publishBtn = document.createElement('button');
+            publishBtn.textContent = item[4] ? 'Unpublish' : 'Publish'; // item[4] - published flag
+            publishBtn.onclick = function() {
+                const action = item[4] ? 'unpublish' : 'publish';
+                fetch(`/api/${action}/${encodeURIComponent(item[0])}`, {method: 'POST'})
+                .then(response => response.json())
+                .then(data => {
+                    console.log(data.message);
+                    refreshLinks(); // Обновляем список после изменения статуса
+                })
+                .catch(error => {
+                    console.error(`Error ${action}ing file:`, error);
+                    alert(`Error ${action}ing file: ${error.message}`);
+                });
+            };
+            li.appendChild(publishBtn);
+
+            linkList.appendChild(li);
+        });
+    })
+    .catch(error => {
+        console.error('Error fetching links:', error);
+        // Optionally display an error message in the UI
+        const linkList = document.getElementById('linkList');
+        linkList.innerHTML = `<li class="link-item">Error loading links: ${error.message}</li>`;
+    });
+}
+
+// Initial load of links
+refreshLinks();
+
+// Generate XLSX button
+document.getElementById('generateBtn').addEventListener('click', function() {
+    alert('Generating XLSX document...');
+    // Implement actual generation logic here
+});
+
+
+##################################### static/publinks.js #####################################
+let currentAlbum = '';
+let currentArticle = '';
+let offset = 0;
+const limit = 20;
+
+// Fetch albums
+function fetchAlbums() {
+    fetch('/api/albums')
+    .then(response => response.json())
+    .then(data => {
+        const albumSelect = document.getElementById('albumSelect');
+        albumSelect.innerHTML = '<option value="">Select Album</option>';
+        data.forEach(album => {
+            const option = document.createElement('option');
+            option.value = album;
+            option.textContent = album;
+            albumSelect.appendChild(option);
+        });
+    })
+    .catch(error => {
+        console.error('Error fetching albums:', error);
+    });
+}
+
+// On album change
+function onAlbumChange() {
+    const albumSelect = document.getElementById('albumSelect');
+    currentAlbum = albumSelect.value;
+    document.getElementById('articleSelect').disabled = !currentAlbum;
+    if (currentAlbum) {
+        fetchArticles(currentAlbum);
+    } else {
+        document.getElementById('articleSelect').innerHTML = '<option value="">Select Article</option>';
+        clearLinks();
+    }
+}
+
+// Fetch articles for an album
+function fetchArticles(albumName) {
+    fetch(`/api/articles/${encodeURIComponent(albumName)}`)
+    .then(response => response.json())
+    .then(data => {
+        const articleSelect = document.getElementById('articleSelect');
+        articleSelect.innerHTML = '<option value="">Select Article</option>';
+        data.forEach(article => {
+            const option = document.createElement('option');
+            option.value = article;
+            option.textContent = article;
+            articleSelect.appendChild(option);
+        });
+    })
+    .catch(error => {
+        console.error('Error fetching articles:', error);
+    });
+}
+
+// On article change
+function onArticleChange() {
+    const articleSelect = document.getElementById('articleSelect');
+    currentArticle = articleSelect.value;
+    if (currentAlbum && currentArticle) {
+        loadLinks(currentAlbum, currentArticle);
+    } else {
+        clearLinks();
+    }
+}
+
+// Load links for a specific album and article
+function loadLinks(albumName, articleNumber) {
+    fetch(`/api/links/${encodeURIComponent(albumName)}/${encodeURIComponent(articleNumber)}?offset=${offset}&limit=${limit}`)
+    .then(response => response.json())
+    .then(data => {
+        const linkList = document.getElementById('linkList');
+        linkList.innerHTML = '';
+        data.forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'link-item';
+            const link = document.createElement('a');
+            link.href = `/static/${item[0]}`;
+            link.textContent = item[0];
+            link.target = '_blank';
+            li.appendChild(link);
+            linkList.appendChild(li);
+        });
+    })
+    .catch(error => {
+        console.error('Error fetching links:', error);
+    });
+}
+
+// Clear links list
+function clearLinks() {
+    document.getElementById('linkList').innerHTML = '';
+    offset = 0;
+}
+
+// Load more links
+function loadMore() {
+    if (currentAlbum && currentArticle) {
+        offset += limit;
+        loadLinks(currentAlbum, currentArticle);
+    }
+}
+
+// Go back to index page
+function goBack() {
+    window.location.href = '/';
+}
+
+// Initial load
+fetchAlbums();
+
+
+
+##################################### templates/index.html #####################################
+<!-- web/templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Index Page</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; display: flex; }
+        .left-column { width: 50%; padding: 20px; border-right: 1px solid #ccc; }
+        .right-column { width: 50%; padding: 20px; }
+        .upload-area { border: 2px dashed #ccc; padding: 20px; text-align: center; margin-bottom: 20px; }
+        .btn { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; cursor: pointer; margin-top: 10px; }
+        .btn:hover { background-color: #45a049; }
+        .link-list { list-style-type: none; padding: 0; }
+        .link-item { padding: 10px; border-bottom: 1px solid #eee; }
+        .link-item a { text-decoration: none; color: #007BFF; }
+        .link-item a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="left-column">
+        <h2>Upload ZIP Archive</h2>
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="upload-area" id="dropArea">
+                Drag & Drop ZIP file here or click to browse
+                <input type="file" id="zipFile" name="zipfile" accept=".zip" style="display:none;">
+            </div>
+            <button type="submit" class="btn">Upload Files</button>
+        </form>
+    </div>
+    <div class="right-column">
+        <h2>Published Links</h2>
+        <ul id="linkList" class="link-list"></ul>
+        <button id="generateBtn" class="btn">Generate XLSX Document</button>
+    </div>
+    <script src="static/index.js"></script></body>
+</html>
+
+
+##################################### templates/publinks.html #####################################
+<!-- web/templates/publinks.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Published Links</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; display: flex; }
+        .left-column { width: 50%; padding: 20px; border-right: 1px solid #ccc; }
+        .right-column { width: 50%; padding: 20px; }
+        select { width: 100%; padding: 10px; margin-bottom: 10px; }
+        .link-list { list-style-type: none; padding: 0; height: 400px; overflow-y: auto; }
+        .link-item { padding: 10px; border-bottom: 1px solid #eee; }
+        .link-item a { text-decoration: none; color: #007BFF; }
+        .link-item a:hover { text-decoration: underline; }
+        .btn { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; cursor: pointer; margin-top: 10px; }
+        .btn:hover { background-color: #45a049; }
+        .load-more-btn { display: block; width: 100%; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="left-column">
+        <h2>Select Album and Article</h2>
+        <select id="albumSelect" onchange="onAlbumChange()">
+            <option value="">Select Album</option>
+        </select>
+        <select id="articleSelect" onchange="onArticleChange()" disabled>
+            <option value="">Select Article</option>
+        </select>
+        <button onclick="goBack()" class="btn">Back to Uploads</button>
+    </div>
+    <div class="right-column">
+        <h2>Published Links</h2>
+        <ul id="linkList" class="link-list"></ul>
+        <button id="loadMoreBtn" class="btn load-more-btn" onclick="loadMore()">Load More</button>
+        <button id="generateBtn" class="btn">Generate XLSX Document</button>
+    </div>
+    <script src="static/publinks.js"></script>
+</body>
+</html>
+

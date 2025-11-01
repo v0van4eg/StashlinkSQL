@@ -1,0 +1,37 @@
+<!-- web/templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Index Page</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; display: flex; }
+        .left-column { width: 50%; padding: 20px; border-right: 1px solid #ccc; }
+        .right-column { width: 50%; padding: 20px; }
+        .upload-area { border: 2px dashed #ccc; padding: 20px; text-align: center; margin-bottom: 20px; }
+        .btn { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; cursor: pointer; margin-top: 10px; }
+        .btn:hover { background-color: #45a049; }
+        .link-list { list-style-type: none; padding: 0; }
+        .link-item { padding: 10px; border-bottom: 1px solid #eee; }
+        .link-item a { text-decoration: none; color: #007BFF; }
+        .link-item a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="left-column">
+        <h2>Upload ZIP Archive</h2>
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="upload-area" id="dropArea">
+                Drag & Drop ZIP file here or click to browse
+                <input type="file" id="zipFile" name="zipfile" accept=".zip" style="display:none;">
+            </div>
+            <button type="submit" class="btn">Upload Files</button>
+        </form>
+    </div>
+    <div class="right-column">
+        <h2>Published Links</h2>
+        <ul id="linkList" class="link-list"></ul>
+        <button id="generateBtn" class="btn">Generate XLSX Document</button>
+    </div>
+    <script src="static/index.js"></script></body>
+</html>
