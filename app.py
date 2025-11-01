@@ -105,6 +105,9 @@ def process_zip(zip_path):
             conn.commit()
             conn.close()
 
+            # Поддерживаемые графические расширения
+            allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.svg'}
+
             # Проход по всем файлам в альбоме
             for root, dirs, files in os.walk(album_path):
                 # Проверяем, что мы находимся в подкаталоге альбома (не в самом альбоме)
@@ -128,6 +131,12 @@ def process_zip(zip_path):
                         for file_name in files:
                             file_path = os.path.join(root, file_name)
                             if os.path.isfile(file_path):
+                                # Проверяем расширение файла
+                                _, ext = os.path.splitext(file_name.lower())
+                                if ext not in allowed_extensions:
+                                    logger.info(f"Skipping non-image file: {file_path}")
+                                    continue # Пропускаем файл, если расширение не поддерживается
+
                                 # Относительный путь от папки images
                                 relative_file_path = os.path.relpath(file_path, app.config['UPLOAD_FOLDER'])
 
@@ -225,3 +234,4 @@ def api_articles(album_name):
 if __name__ == '__main__':
     init_db()
     app.run(host='0.0.0.0', port=5000, debug=True)
+    
