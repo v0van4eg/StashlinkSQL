@@ -190,9 +190,7 @@
             }
         }
     </style>
-    <script>
-        window.SERVERNAME = "{{ SERVERNAME }}";
-    </script>
+
 </head>
 <body>
     <div class="container">
@@ -233,5 +231,8 @@
     </div>
 
     <script src="/static/index.js"></script>
+    <script>
+        window.domain = "{{ domain }}"; // Передается из Flask
+    </script>
 </body>
 </html>

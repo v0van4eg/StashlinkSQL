@@ -96,8 +96,9 @@ uploadForm.addEventListener('submit', async (e) => {
 
         let albumName = data.album_name || file.name.replace(/\.zip$/i, '');
         currentAlbumName = albumName;
-        showFilesForAlbum(albumName);
-        alert('Архив успешно загружен!');
+        showFilesForAlbum(albumName); // Исправлен вызов
+        // Удалено: alert('Архив успешно загружен!');
+
     } catch (error) {
         console.error('Upload failed:', error);
         alert(`Ошибка загрузки: ${error.message}`);
@@ -151,7 +152,7 @@ async function showFilesForAlbum(albumName) {
         const allFiles = await response.json();
 
         // Filter by album name
-        const albumFiles = allFiles.filter(item => item[1] === albumName);
+        const albumFiles = allFiles.filter(item => item[1] === albumName); // item[1] - album_name
 
         if (albumFiles.length === 0) {
             linkList.innerHTML = '<div class="empty-state">В этом альбоме нет файлов.</div>';
@@ -164,9 +165,11 @@ async function showFilesForAlbum(albumName) {
             li.className = 'link-item';
 
             const fullFilePath = item[0]; // filename from DB (e.g., album1/article1/file.jpg)
-            const encodedPath = fullFilePath.split('/').map(encodeURIComponent).join('/');
-            const imageUrl = `/images/${encodedPath}`;
-            const absoluteUrl = `${window.location.origin}${imageUrl}`;
+            // Преобразование пути для URL (если нужно, можно использовать encodeURIComponent)
+            const encodedPath = fullFilePath.replace(/\//g, '/'); // Убедимся, что пути разделены '/'
+            const imageUrl = `/images/${encodedPath}`; // Используем правильный префикс
+            // Собираем полный URL, который будет работать
+            const absoluteUrl = `${window.domain}${imageUrl}`; // Используем домен из шаблона
 
             // Create preview container
             const previewDiv = document.createElement('div');
@@ -177,7 +180,7 @@ async function showFilesForAlbum(albumName) {
             img.src = imageUrl;
             img.alt = Path.basename(fullFilePath);
             img.onerror = function() {
-                this.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjFGNUY5Ii8+CjxwYXRoIGQ9Ik0zNi41IDI0LjVIMjMuNVYzNy41SDM2LjVWMjQuNVoiIGZpbGw9IiNEOEUxRTYiLz4KPHBhdGggZD0iTTI1IDI2SDM1VjI5SDI1VjI2WiIgZpbGw9IiNEOEUxRTYiLz4KPHBhdGggZD0iTTI1IDMxSDMyVjM0SDI1VjMxWiIgZmlsbD0iI0Q4RTFFNiIvPgo8L3N2Zz4K'; // Placeholder for non-image files
+                this.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjFGNUY5Ii8+CjxwYXRoIGQ9Ik0zNi41IDI0LjVIMjMuNVYzNy41SDM2LjVWMjQuNVoiIGZpbGw9IiNEOEUxRTYiLz4KPHBhdGggZD0iTTI1IDI2SDM1VjI5SDI1VjI2WiIgZmlsbD0iI0Q4RTFFNiIvPgo8cGF0aCBkPSJNMjUgMzFIMzJWMzRIMjVWMzFaIiBmaWxsPSIjRDhFMUU2Ii8+Cjwvc3ZnPg=='; // Placeholder for non-image files
             };
 
             // Create URL container
@@ -186,7 +189,7 @@ async function showFilesForAlbum(albumName) {
 
             const urlInput = document.createElement('input');
             urlInput.type = 'text';
-            urlInput.value = absoluteUrl;
+            urlInput.value = absoluteUrl; // Используем абсолютный URL
             urlInput.readOnly = true;
             urlInput.className = 'link-url-input';
             urlInput.title = 'Прямая ссылка на изображение';
