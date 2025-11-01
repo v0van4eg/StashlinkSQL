@@ -1,4 +1,5 @@
 # app.py
+
 import os
 import zipfile
 from flask import Flask, request, jsonify, render_template, send_from_directory
@@ -6,6 +7,7 @@ import sqlite3
 import logging
 import re
 import unicodedata
+from urllib.parse import quote
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'images'
@@ -77,11 +79,52 @@ def get_all_files():
     conn.close()
     return results
 
-# Синхронизация БД с файловой системой (пример)
+# Синхронизация БД с файловой системой
 def sync_db_with_filesystem():
-    # Реализация синхронизации будет зависеть от требований
-    # Здесь просто возвращаем пустые списки как заглушка
-    return [], []
+    """
+    Синхронизирует базу данных с файловой системой.
+    Удаляет из БД записи для файлов, которые больше не существуют в папке images.
+    Возвращает списки удалённых и добавленных файлов (относительные пути).
+    """
+    conn = sqlite3.connect('files.db')
+    cursor = conn.cursor()
+
+    # 1. Получаем все записи из БД
+    cursor.execute("SELECT filename FROM files")
+    db_files = set(row[0] for row in cursor.fetchall())
+
+    # 2. Получаем все файлы из папки images рекурсивно
+    fs_files = set()
+    allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.svg'}
+    for root, dirs, files in os.walk(app.config['UPLOAD_FOLDER']):
+        for file in files:
+            _, ext = os.path.splitext(file.lower())
+            if ext in allowed_extensions:
+                # Относительный путь от UPLOAD_FOLDER
+                full_path = os.path.join(root, file)
+                rel_path = os.path.relpath(full_path, app.config['UPLOAD_FOLDER'])
+                # Используем нормализованный путь (с / как разделитель для хранения в БД)
+                fs_files.add(rel_path.replace(os.sep, '/'))
+
+    # 3. Определяем, какие файлы нужно удалить из БД (есть в БД, нет в ФС)
+    files_to_delete = db_files - fs_files
+
+    # 4. Определяем, какие файлы нужно добавить в БД (есть в ФС, нет в БД)
+    # Пока не реализуем добавление, так как добавление происходит через process_zip
+    # files_to_add = fs_files - db_files
+
+    # 5. Удаляем устаревшие записи из БД
+    deleted_count = 0
+    for rel_path in files_to_delete:
+        cursor.execute("DELETE FROM files WHERE filename = ?", (rel_path,))
+        deleted_count += cursor.rowcount
+
+    conn.commit()
+    conn.close()
+
+    logger.info(f"Sync: Deleted {deleted_count} records from DB.")
+    # Возвращаем только удалённые, так как добавление файлов из ФС вне процесса ZIP не предусмотрено
+    return list(files_to_delete), []
 
 # Обработка ZIP-архива
 def process_zip(zip_path):
@@ -138,7 +181,7 @@ def process_zip(zip_path):
                                     continue # Пропускаем файл, если расширение не поддерживается
 
                                 # Относительный путь от папки images
-                                relative_file_path = os.path.relpath(file_path, app.config['UPLOAD_FOLDER'])
+                                relative_file_path = os.path.relpath(file_path, app.config['UPLOAD_FOLDER']).replace(os.sep, '/')
 
                                 # Имя файла
                                 file_name = os.path.basename(relative_file_path)
@@ -146,9 +189,9 @@ def process_zip(zip_path):
                                 # Формируем публичную ссылку
                                 # Пример: http://tecnobook/images/album1/article1/file.jpg
                                 # Используем '/' как разделитель, так как это часть URL
-                                public_link = f"{base_url}/images/{relative_file_path.replace(os.sep, '/')}"
-                                # Убедитесь, что URL правильно экранирован, но для простоты используем '/'
-                                # Если нужно, можно использовать urllib.parse.quote_plus или аналогичное
+                                # Кодируем путь для корректной работы URL
+                                encoded_path = quote(relative_file_path, safe='/')
+                                public_link = f"{base_url}/images/{encoded_path}"
 
                                 conn = sqlite3.connect('files.db')
                                 cursor = conn.cursor()
@@ -174,11 +217,11 @@ def index():
 @app.route('/api/sync', methods=['POST'])
 def api_sync():
     try:
-        added, removed = sync_db_with_filesystem()
+        deleted, added = sync_db_with_filesystem()
         return jsonify({
             'message': 'Synchronization completed successfully',
-            'added': added,
-            'removed': removed
+            'deleted': deleted,
+            'added': added
         })
     except Exception as e:
         logger.error(f"Error in sync endpoint: {e}")
@@ -208,7 +251,7 @@ def upload_zip():
         if success:
             os.remove(file_path)
             # Возвращаем имя альбома
-            return jsonify({'message': 'Files uploaded successfully', 'album_name': safe_zip_name.replace('.zip', '')})
+            return jsonify({'message': 'Files uploaded successfully', 'album_name': safe_folder_name(name_without_ext)})
         else:
             return jsonify({'error': 'Failed to process ZIP file'}), 500
 
@@ -234,4 +277,3 @@ def api_articles(album_name):
 if __name__ == '__main__':
     init_db()
     app.run(host='0.0.0.0', port=5000, debug=True)
-    

@@ -13,18 +13,23 @@
             box-sizing: border-box;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-        body {
+        html, body {
+            height: 100%;
             background: #e9ecef;
             color: #333;
-            padding: 20px;
+            padding: 10px; /* Отступы от краев экрана */
+            overflow: hidden; /* Предотвращаем появление скролла на body */
         }
         .container {
-            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            height: 100%; /* Занимает всю высоту viewport */
         }
         header {
             text-align: center;
             margin-bottom: 10px;
             margin-top: 0px;
+            flex-shrink: 0; /* Не сжимается */
         }
         h1 {
             font-size: 2.2rem;
@@ -39,16 +44,22 @@
         .columns {
             display: flex;
             gap: 24px;
+            flex: 1; /* Занимает оставшееся пространство после header */
+            overflow: hidden; /* Предотвращает появление скролла на .columns */
         }
 
         .column-left {
             flex: 0 0 25%;
             min-width: 0;
+            display: flex;
+            flex-direction: column;
         }
 
         .column-right {
             flex: 1;
             min-width: 0;
+            display: flex;
+            flex-direction: column;
         }
 
         .card {
@@ -56,7 +67,10 @@
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
             padding: 24px;
-            height: fit-content;
+            display: flex;
+            flex-direction: column;
+            flex: 1; /* Растягивает карточку на всю высоту колонки */
+            overflow: hidden; /* Предотвращает появление скролла на .card */
         }
 
         .upload-area {
@@ -68,6 +82,10 @@
             transition: all 0.3s ease;
             background: #e9ecef;
             margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center; /* Центрирует содержимое по вертикали */
+            flex: 1; /* Позволяет области загрузки растянуться */
         }
         .upload-area:hover, .upload-area.drag-over {
             border-color: #3498db;
@@ -120,16 +138,20 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-shrink: 0; /* Заголовок не сжимается */
         }
         .link-list {
             list-style: none;
-            max-height: 600px;
-            overflow-y: auto;
             padding-right: 8px;
+            flex: 1; /* Позволяет списку файлов растянуться на всё доступное место */
+            overflow-y: auto; /* Добавлен скролл для списка файлов */
+            display: flex;
+            flex-direction: column;
         }
         .link-item {
             padding: 16px 0;
             border-bottom: 1px solid #dee2e6;
+            flex-shrink: 0; /* Элементы списка не сжимаются */
         }
         .link-item:last-child {
             border-bottom: none;
@@ -142,6 +164,7 @@
             color: #495057;
             border-left: 4px solid #3498db; /* Добавлен акцент */
             border-radius: 4px;
+            flex-shrink: 0; /* Заголовки артикулов не сжимаются */
         }
         .link-preview {
             display: flex;
@@ -181,6 +204,10 @@
             text-align: center;
             padding: 40px 0;
             color: #6c757d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 1; /* Центрирует сообщение внутри .link-list */
         }
 
         /* Стили для прогресс-бара */
