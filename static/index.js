@@ -35,12 +35,14 @@ function initializeElements() {
     uploadForm = document.getElementById('uploadForm');
     linkList = document.getElementById('linkList');
     currentAlbumTitle = document.getElementById('currentAlbumTitle');
+    // Добавляем получение элемента manageBtn
+    manageBtn = document.getElementById('manageBtn');
     // Элементы прогресс-бара
     progressContainer = document.getElementById('progressContainer');
     progressBar = document.getElementById('progressBar');
     progressText = document.getElementById('progressText');
 
-    if (!dropArea || !zipFileInput || !browseBtn || !uploadBtn || !uploadForm || !linkList || !currentAlbumTitle || !progressContainer || !progressBar || !progressText) {
+    if (!dropArea || !zipFileInput || !browseBtn || !uploadBtn || !uploadForm || !linkList || !currentAlbumTitle || !manageBtn || !progressContainer || !progressBar || !progressText) { // Добавлен manageBtn в проверку
         console.error('One or more required DOM elements not found!');
         return false;
     }
@@ -51,7 +53,7 @@ function initializeElements() {
 // --- Функция обновления UI ---
 function updateUI() {
     // Проверяем, инициализированы ли элементы
-    if (!zipFileInput || !dropArea || !uploadBtn) {
+    if (!zipFileInput || !dropArea || !uploadBtn || !manageBtn) { // Добавлен manageBtn в проверку
         console.error('DOM elements not initialized for updateUI');
         return;
     }
@@ -62,9 +64,12 @@ function updateUI() {
         // Показываем имя файла и его размер перед "Готов к загрузке"
         dropArea.innerHTML = `<p>Выбран файл: <strong>${file.name}</strong></p><p>Размер: ${fileSize}</p><p>Готов к загрузке</p>`;
         uploadBtn.disabled = false;
+        // manageBtn не должен зависеть от выбора файла
+        // manageBtn.disabled = false; // Убрано, если кнопка управления не требует специального состояния
     } else {
         dropArea.innerHTML = `<p>Перетащите ZIP-архив сюда</p><p>или</p><button type="button" class="btn" id="browseBtn">Выбрать файл</button>`;
         uploadBtn.disabled = true;
+        // manageBtn.disabled = true; // Убрано, если кнопка управления не требует специального состояния
         // Обязательно повторно добавляем обработчик для новой кнопки "Выбрать файл"
         const newBrowseBtn = document.getElementById('browseBtn');
         if (newBrowseBtn) {

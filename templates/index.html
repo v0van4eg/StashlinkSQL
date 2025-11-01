@@ -110,6 +110,28 @@
         .btn:hover {
             background: #2980b9;
         }
+
+        .btnmanage {
+            background: #3498db; /* Используйте тот же цвет фона, что и основная кнопка */
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            /* margin-top: 10px; Убрано, так как кнопка теперь внизу карточки */
+            margin-top: auto; /* Pushes the button to the bottom */
+            align-self: stretch; /* Makes the button full width */
+        }
+        .btnmanage:hover {
+            background: #2980b9;
+        }
+
+
         .btn:disabled {
             background: #adb5bd;
             cursor: not-allowed;
@@ -278,6 +300,10 @@
                             </div>
                         </div>
                     </form>
+                    <!-- Кнопка "Управление ссылками" теперь вне формы, внизу карточки -->
+                    <button class="btnmanage" id="manageBtn">
+                        <span>Управление ссылками</span>
+                    </button>
                 </div>
             </div>
 
