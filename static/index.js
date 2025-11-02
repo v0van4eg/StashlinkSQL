@@ -1,5 +1,4 @@
 // static/index.js
-
 // --- Функция форматирования размера файла ---
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
@@ -15,6 +14,7 @@ let droppedFile = null;
 let currentAlbumName = null;
 // DOM elements (получаем их один раз после загрузки DOM)
 let dropArea, zipFileInput, browseBtn, uploadBtn, uploadForm, linkList, currentAlbumTitle, progressContainer, progressBar, progressText;
+let manageBtn, uploadCard, emptyCard, backToUploadBtn; // Добавлены новые переменные
 // --- Конец глобальных переменных ---
 
 // --- Вспомогательная функция ---
@@ -30,19 +30,23 @@ const Path = {
 function initializeElements() {
     dropArea = document.getElementById('dropArea');
     zipFileInput = document.getElementById('zipFile');
-    browseBtn = document.getElementById('browseBtn');
+    browseBtn = document.getElementById('browseBtn'); // Оригинальная кнопка в dropArea
     uploadBtn = document.getElementById('uploadBtn');
     uploadForm = document.getElementById('uploadForm');
     linkList = document.getElementById('linkList');
     currentAlbumTitle = document.getElementById('currentAlbumTitle');
-    // Добавляем получение элемента manageBtn
+    // Добавляем получение элементов для переключения карточек
     manageBtn = document.getElementById('manageBtn');
+    uploadCard = document.getElementById('uploadCard');
+    emptyCard = document.getElementById('emptyCard');
+    backToUploadBtn = document.getElementById('backToUploadBtn'); // Добавлен новый элемент для кнопки "Назад"
+
     // Элементы прогресс-бара
     progressContainer = document.getElementById('progressContainer');
     progressBar = document.getElementById('progressBar');
     progressText = document.getElementById('progressText');
 
-    if (!dropArea || !zipFileInput || !browseBtn || !uploadBtn || !uploadForm || !linkList || !currentAlbumTitle || !manageBtn || !progressContainer || !progressBar || !progressText) { // Добавлен manageBtn в проверку
+    if (!dropArea || !zipFileInput || !browseBtn || !uploadBtn || !uploadForm || !linkList || !currentAlbumTitle || !manageBtn || !backToUploadBtn || !uploadCard || !emptyCard || !progressContainer || !progressBar || !progressText) { // Обновлено условие проверки
         console.error('One or more required DOM elements not found!');
         return false;
     }
@@ -53,11 +57,10 @@ function initializeElements() {
 // --- Функция обновления UI ---
 function updateUI() {
     // Проверяем, инициализированы ли элементы
-    if (!zipFileInput || !dropArea || !uploadBtn || !manageBtn) { // Добавлен manageBtn в проверку
+    if (!zipFileInput || !dropArea || !uploadBtn || !manageBtn) {
         console.error('DOM elements not initialized for updateUI');
         return;
     }
-
     const file = droppedFile || (zipFileInput.files[0] || null);
     if (file) {
         const fileSize = formatFileSize(file.size);
@@ -70,11 +73,7 @@ function updateUI() {
         dropArea.innerHTML = `<p>Перетащите ZIP-архив сюда</p><p>или</p><button type="button" class="btn" id="browseBtn">Выбрать файл</button>`;
         uploadBtn.disabled = true;
         // manageBtn.disabled = true; // Убрано, если кнопка управления не требует специального состояния
-        // Обязательно повторно добавляем обработчик для новой кнопки "Выбрать файл"
-        const newBrowseBtn = document.getElementById('browseBtn');
-        if (newBrowseBtn) {
-            newBrowseBtn.addEventListener('click', () => zipFileInput.click());
-        }
+        // ВАЖНО: НЕ добавляем обработчик здесь. Вместо этого, добавим его как делегированный обработчик на родительский элемент dropArea.
     }
 }
 // --- Конец функции обновления UI ---
@@ -115,14 +114,11 @@ function fallbackCopyTextToClipboard(text, button) {
         opacity: 0;
         pointer-events: none;
     `;
-
     // Добавляем textarea в DOM
     document.body.appendChild(textArea);
-
     // Выделяем текст в textarea
     textArea.focus();
     textArea.select();
-
     try {
         // Выполняем команду "copy"
         const successful = document.execCommand('copy');
@@ -138,7 +134,6 @@ function fallbackCopyTextToClipboard(text, button) {
         console.error('Exception при выполнении execCommand copy:', err);
         alert('Не удалось скопировать текст. Пожалуйста, скопируйте вручную.');
     }
-
     // Удаляем временный textarea из DOM
     document.body.removeChild(textArea);
 }
@@ -148,7 +143,6 @@ function updateButtonState(button) {
     const originalText = button.textContent;
     button.textContent = 'Скопировано!';
     button.classList.add('copied');
-
     setTimeout(() => {
         button.textContent = originalText;
         button.classList.remove('copied');
@@ -167,7 +161,6 @@ async function showFilesForAlbum(albumName) {
         const response = await fetch('/api/files');
         if (!response.ok) throw new Error('Failed to load file list');
         const allFiles = await response.json();
-
         // Фильтруем по имени альбома
         // Структура каждого элемента в allFiles: [filename, album_name, article_number, public_link, created_at]
         const albumFiles = allFiles.filter(item => item[1] === albumName); // item[1] - album_name
@@ -188,10 +181,8 @@ async function showFilesForAlbum(albumName) {
         });
 
         linkList.innerHTML = '';
-
         // Сортировка артикулов (например, лексикографически)
         const sortedArticles = Object.keys(groupedFiles).sort();
-
         sortedArticles.forEach(article => {
             // Добавляем заголовок артикула
             const articleHeader = document.createElement('li');
@@ -220,7 +211,6 @@ async function showFilesForAlbum(albumName) {
             filesForArticle.forEach(item => {
                 const li = document.createElement('li');
                 li.className = 'link-item';
-
                 const fullFilePath = item[0]; // filename из БД (например, album1/article1/file.jpg)
                 const absoluteUrl = item[3]; // public_link из БД (например, http://tecnobook/images/album1/article1/file.jpg)
 
@@ -240,7 +230,6 @@ async function showFilesForAlbum(albumName) {
                 // Создаем контейнер предварительного просмотра
                 const previewDiv = document.createElement('div');
                 previewDiv.className = 'link-preview';
-
                 // Создаем изображение предварительного просмотра
                 const img = document.createElement('img');
                 img.src = imageUrl; // Используем путь, извлеченный из public_link
@@ -249,25 +238,21 @@ async function showFilesForAlbum(albumName) {
                     // Плейсхолдер для файлов, которые не являются изображениями или не загружаются
                     this.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjFGNUY5Ii8+CjxwYXRoIGQ9Ik0zNi41IDI0LjVIMjMuNVYzNy41SDM2LjVWMjQuNVoiIGZpbGw9IiNEOEUxRTYiLz4KPHBhdGggZD0iTTI1IDI2SDM1VjI5SDI1VjI2WiIgZmlsbD0iI0Q4RTFFNiIvPgo8cGF0aCBkPSJNMjUgMzFIMzJWMzRIMjVWMzFaIiBmaWxsPSIjRDhFMUU2Ii8+Cjwvc3ZnPg==';
                 };
-
                 // Создаем контейнер URL
                 const urlDiv = document.createElement('div');
                 urlDiv.className = 'link-url';
-
                 const urlInput = document.createElement('input');
                 urlInput.type = 'text';
                 urlInput.value = absoluteUrl; // Используем absoluteUrl (public_link) из БД
                 urlInput.readOnly = true;
                 urlInput.className = 'link-url-input';
                 urlInput.title = 'Прямая ссылка на изображение';
-
                 // Создаем кнопку копирования
                 const copyBtn = document.createElement('button');
                 copyBtn.type = 'button';
                 copyBtn.className = 'btn btn-copy copy-btn';
                 copyBtn.textContent = 'Копировать';
                 copyBtn.addEventListener('click', () => copyToClipboard(absoluteUrl, copyBtn)); // Копируем absoluteUrl из БД
-
                 // Создаем информацию о файле
                 const fileInfo = document.createElement('div');
                 fileInfo.className = 'file-info';
@@ -278,13 +263,11 @@ async function showFilesForAlbum(albumName) {
                 previewDiv.appendChild(img);
                 previewDiv.appendChild(urlDiv);
                 previewDiv.appendChild(copyBtn);
-
                 li.appendChild(previewDiv);
                 li.appendChild(fileInfo);
                 linkList.appendChild(li);
             });
         });
-
     } catch (error) {
         console.error('Error loading files:', error);
         linkList.innerHTML = `<div class="empty-state">Ошибка загрузки файлов для "${albumName}".</div>`;
@@ -295,7 +278,6 @@ async function showFilesForAlbum(albumName) {
 // --- Инициализация после загрузки DOM ---
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM fully loaded and parsed");
-
     // Инициализируем элементы
     if (!initializeElements()) {
         console.error('Failed to initialize DOM elements. Cannot proceed.');
@@ -333,8 +315,17 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     // --- Конец Drag and Drop ---
 
-    // --- Обработчики для кнопки "Выбрать файл" и input ---
-    browseBtn.addEventListener('click', () => zipFileInput.click());
+    // --- Обработчик для кнопки "Выбрать файл" (делегирование) ---
+    // Теперь обработчик добавляется к dropArea, который всегда существует.
+    // Он будет срабатывать на клики по любому элементу внутри dropArea, включая новую кнопку "Выбрать файл".
+    dropArea.addEventListener('click', function(event) {
+        if (event.target && event.target.id === 'browseBtn') {
+            console.log("Click event on browseBtn (delegated)!");
+            zipFileInput.click(); // Клик по input
+        }
+    });
+    // --- Конец обработчика input ---
+
     zipFileInput.addEventListener('change', () => {
         // Сбрасываем droppedFile, если файл выбран через input
         droppedFile = null;
@@ -350,7 +341,6 @@ document.addEventListener('DOMContentLoaded', function() {
              console.error('DOM elements for upload not initialized');
              return;
         }
-
         const file = droppedFile || zipFileInput.files[0];
         if (!file || !file.name.toLowerCase().endsWith('.zip')) {
             alert('Пожалуйста, выберите ZIP-архив.');
@@ -386,7 +376,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         let albumName = data.album_name || file.name.replace(/\.zip$/i, '');
                         currentAlbumName = albumName;
                         showFilesForAlbum(albumName);
-
                         // --- Сброс области загрузки в исходное состояние ---
                         zipFileInput.value = ''; // Очистить input
                         droppedFile = null;      // Сбросить переменную droppedFile
@@ -425,13 +414,26 @@ document.addEventListener('DOMContentLoaded', function() {
         // Отправляем запрос
         xhr.open('POST', '/upload');
         xhr.send(formData);
-
     });
     // --- Конец обработчика отправки формы ---
 
+    // --- Обработчик для кнопки "Управление ссылками" ---
+    // Проверяем, что элементы существуют перед добавлением обработчика
+    if (manageBtn && uploadCard && emptyCard) {
+        manageBtn.addEventListener('click', function() {
+            console.log("Кнопка 'Управление ссылками' нажата");
+            // Скрываем основную карточку загрузки
+            uploadCard.style.display = 'none';
+            // Показываем пустую карточку
+            emptyCard.style.display = 'flex'; // Используем 'flex', чтобы соответствовать стилю .card
+        });
+    } else {
+        console.error('Элементы для переключения карточек не найдены');
+    }
+    // --- Конец обработчика ---
+
     // Инициализируем UI (должно быть пустое состояние)
     updateUI();
-
     // Устанавливаем начальное сообщение в списке файлов
     linkList.innerHTML = '<div class="empty-state">Загрузите ZIP-архив, чтобы получить прямые ссылки на изображения</div>';
 });

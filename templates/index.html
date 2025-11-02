@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PicHost — Хостинг изображений</title>
     <style>
-        /* --- CSS остается без изменений --- */
+        /* --- CSS остается без изменений, за исключением добавления стиля для #emptyCard --- */
         * {
             margin: 0;
             padding: 0;
@@ -40,28 +40,24 @@
             color: #6c757d;
             font-size: 1.0rem;
         }
-
         .columns {
             display: flex;
             gap: 24px;
             flex: 1; /* Занимает оставшееся пространство после header */
             overflow: hidden; /* Предотвращает появление скролла на .columns */
         }
-
         .column-left {
             flex: 0 0 25%;
             min-width: 0;
             display: flex;
             flex-direction: column;
         }
-
         .column-right {
             flex: 1;
             min-width: 0;
             display: flex;
             flex-direction: column;
         }
-
         .card {
             background: #f8f9fa;
             border-radius: 12px;
@@ -72,7 +68,17 @@
             flex: 1; /* Растягивает карточку на всю высоту колонки */
             overflow: hidden; /* Предотвращает появление скролла на .card */
         }
-
+        /* Добавлен стиль для #emptyCard, чтобы он соответствовал .card */
+        #emptyCard {
+            background: #f8f9fa;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            flex: 1; /* Растягивает карточку на всю высоту колонки */
+            overflow: hidden; /* Предотвращает появление скролла на .card */
+        }
         .upload-area {
             border: 2px dashed #adb5bd;
             border-radius: 10px;
@@ -110,7 +116,6 @@
         .btn:hover {
             background: #2980b9;
         }
-
         .btnmanage {
             background: #3498db; /* Используйте тот же цвет фона, что и основная кнопка */
             color: white;
@@ -130,8 +135,6 @@
         .btnmanage:hover {
             background: #2980b9;
         }
-
-
         .btn:disabled {
             background: #adb5bd;
             cursor: not-allowed;
@@ -153,7 +156,6 @@
         .btn-copy.copied {
             background: #2ecc71;
         }
-
         .links-section h2 {
             margin-bottom: 16px;
             color: #2c3e50;
@@ -221,7 +223,6 @@
         .copy-btn {
             white-space: nowrap;
         }
-
         .empty-state {
             text-align: center;
             padding: 40px 0;
@@ -231,7 +232,6 @@
             justify-content: center;
             flex: 1; /* Центрирует сообщение внутри .link-list */
         }
-
         /* Стили для прогресс-бара */
         #progressContainer {
             display: none; /* Скрыт по умолчанию */
@@ -253,7 +253,6 @@
             font-size: 0.8rem;
             font-weight: bold;
         }
-
         @media (max-width: 900px) {
             .columns {
                 flex-direction: column;
@@ -278,10 +277,9 @@
             <h2>📁 PicHost — Хостинг изображений</h2>
             <p class="subtitle">Загрузите ZIP-архив с изображениями для получения прямых ссылок</p>
         </header>
-
         <div class="columns">
             <div class="column-left">
-                <div class="card">
+                <div class="card" id="uploadCard"> <!-- Добавлен id -->
                     <h2>📤 Загрузите ZIP-архив</h2>
                     <form id="uploadForm" enctype="multipart/form-data">
                         <div class="upload-area" id="dropArea">
@@ -305,8 +303,20 @@
                         <span>Управление ссылками</span>
                     </button>
                 </div>
+                <!-- Новая пустая карточка -->
+                <div id="emptyCard" style="display: none;"> <!-- Скрыта по умолчанию, стилизация через CSS выше -->
+                    <h2>Управление ссылками</h2>
+                    <div class="empty-card-content">
+                        <!-- Содержимое пустой карточки -->
+                        <p>Здесь будет содержимое для управления ссылками.</p>
+                        <p>Пока что карточка пуста.</p>
+                    </div>
+                                        <!-- Кнопка "Управление ссылками" теперь вне формы, внизу карточки -->
+                    <button class="btnmanage" id="backToUploadBtn">
+                        <span>Назад к загрузке</span>
+                    </button>
+                </div>
             </div>
-
             <div class="column-right">
                 <div class="card links-section">
                     <h2>
