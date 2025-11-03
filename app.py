@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Конфигурация домена и базового URL
-domain = "tecnobook" # Используйте переменные окружения для продакшена
+domain = "stachlink.mooo.com" # Используйте переменные окружения для продакшена
 base_url = f"http://{domain}"  # Используем f-строку для подстановки значения переменной domain
 
 # --- Вспомогательные функции ---
@@ -272,6 +272,30 @@ def api_albums():
 def api_articles(album_name):
     articles = get_articles(album_name)
     return jsonify(articles)
+
+
+# API: получение файлов для конкретного альбома (и опционально артикула)
+@app.route('/api/files/<album_name>')
+@app.route('/api/files/<album_name>/<article_name>')
+def api_files_filtered(album_name, article_name=None):
+    conn = sqlite3.connect('files.db')
+    cursor = conn.cursor()
+
+    if article_name:
+        cursor.execute(
+            "SELECT filename, album_name, article_number, public_link, created_at FROM files WHERE album_name=? AND article_number=? ORDER BY created_at DESC",
+            (album_name, article_name)
+        )
+    else:
+        cursor.execute(
+            "SELECT filename, album_name, article_number, public_link, created_at FROM files WHERE album_name=? ORDER BY created_at DESC",
+            (album_name,)
+        )
+
+    results = cursor.fetchall()
+    conn.close()
+    return jsonify(results)
+
 
 # --- Main ---
 if __name__ == '__main__':
