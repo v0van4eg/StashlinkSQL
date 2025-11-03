@@ -511,12 +511,12 @@ def api_export_xlsx():
 
         if article_name:
             cursor.execute(
-                "SELECT article_number, public_link FROM files WHERE album_name=? AND article_number=? ORDER BY article_number, filename",
+                "SELECT filename, article_number, public_link FROM files WHERE album_name=? AND article_number=? ORDER BY article_number, filename",
                 (album_name, article_name)
             )
         else:
             cursor.execute(
-                "SELECT article_number, public_link FROM files WHERE album_name=? ORDER BY article_number, filename",
+                "SELECT filename, article_number, public_link FROM files WHERE album_name=? ORDER BY article_number, filename",
                 (album_name,)
             )
 
@@ -526,9 +526,21 @@ def api_export_xlsx():
         if not results:
             return jsonify({'error': 'No data found for export'}), 404
 
-        # Группируем ссылки по артикулам
+        # Функция для извлечения числового суффикса из имени файла
+        def extract_suffix(filename):
+            import re
+            # Ищем паттерн: любое количество символов, затем подчеркивание, затем цифры до точки
+            match = re.search(r'(.+)_(\d+)(\.[^.]*)?$', filename)
+            if match:
+                return int(match.group(2))  # Возвращаем числовое значение
+            return 0  # Если суффикс не найден
+
+        # Сортируем результаты по артикулу и числовому суффиксу в имени файла
+        sorted_results = sorted(results, key=lambda x: (x[1], extract_suffix(x[0])))
+
+        # Группируем ссылки по артикулам с правильной сортировкой
         articles_data = {}
-        for article, link in results:
+        for filename, article, link in sorted_results:
             if article not in articles_data:
                 articles_data[article] = []
             articles_data[article].append(link)
@@ -554,7 +566,7 @@ def api_export_xlsx():
                 cell.font = header_font
                 cell.fill = header_fill
 
-            # Заполняем данные
+            # Заполняем данные (уже отсортированные)
             for row, (article, links) in enumerate(articles_data.items(), 2):
                 ws.cell(row=row, column=1, value=article)
                 for col, link in enumerate(links, 2):
@@ -568,10 +580,10 @@ def api_export_xlsx():
                 cell.font = header_font
                 cell.fill = header_fill
 
-            # Заполняем данные
+            # Заполняем данные (уже отсортированные)
             for row, (article, links) in enumerate(articles_data.items(), 2):
                 ws.cell(row=row, column=1, value=article)
-                # Объединяем ссылки через разделитель
+                # Объединяем ссылки через разделитель (уже отсортированные)
                 links_text = separator.join(links)
                 ws.cell(row=row, column=2, value=links_text)
 
@@ -624,7 +636,6 @@ def api_export_xlsx():
     except Exception as e:
         logger.error(f"Error creating XLSX file: {e}")
         return jsonify({'error': f'Failed to create XLSX file: {str(e)}'}), 500
-
 
 # --- Main ---
 if __name__ == '__main__':
