@@ -426,11 +426,33 @@ document.addEventListener('DOMContentLoaded', function() {
             uploadCard.style.display = 'none';
             // Показываем пустую карточку
             emptyCard.style.display = 'flex'; // Используем 'flex', чтобы соответствовать стилю .card
+            // --- Добавлено: Очистка списка ссылок ---
+            linkList.innerHTML = '<div class="empty-state">Загрузите ZIP-архив, чтобы получить прямые ссылки на изображения</div>';
+            // --- Конец добавления ---
         });
     } else {
         console.error('Элементы для переключения карточек не найдены');
     }
     // --- Конец обработчика ---
+
+    // --- Обработчик для кнопки "Назад к загрузке" ---
+    // Проверяем, что элементы существуют перед добавлением обработчика
+    if (backToUploadBtn && uploadCard && emptyCard) {
+        backToUploadBtn.addEventListener('click', function() {
+            console.log("Кнопка 'Назад к загрузке' нажата");
+            // Показываем основную карточку загрузки
+            uploadCard.style.display = 'flex'; // Используем 'flex', чтобы соответствовать стилю .card
+            // Скрываем пустую карточку
+            emptyCard.style.display = 'none';
+            // --- Добавлено: Очистка списка ссылок при возврате ---
+            linkList.innerHTML = '<div class="empty-state">Загрузите ZIP-архив, чтобы получить прямые ссылки на изображения</div>';
+            // --- Конец добавления ---
+            // Сбрасываем заголовок списка (опционально)
+            currentAlbumTitle.textContent = 'Прямые ссылки на изображения';
+        });
+    } else {
+        console.error('Элементы для переключения карточек не найдены');
+    }
 
     // Инициализируем UI (должно быть пустое состояние)
     updateUI();
