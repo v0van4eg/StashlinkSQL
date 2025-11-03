@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PicHost — Хостинг изображений</title>
     <style>
-        /* --- CSS остается без изменений, за исключением добавления стиля для #emptyCard --- */
+        /* --- CSS с добавленными стилями для селекторов --- */
         * {
             margin: 0;
             padding: 0;
@@ -17,19 +17,19 @@
             height: 100%;
             background: #e9ecef;
             color: #333;
-            padding: 10px; /* Отступы от краев экрана */
-            overflow: hidden; /* Предотвращаем появление скролла на body */
+            padding: 10px;
+            overflow: hidden;
         }
         .container {
             display: flex;
             flex-direction: column;
-            height: 100%; /* Занимает всю высоту viewport */
+            height: 100%;
         }
         header {
             text-align: center;
             margin-bottom: 10px;
             margin-top: 0px;
-            flex-shrink: 0; /* Не сжимается */
+            flex-shrink: 0;
         }
         h1 {
             font-size: 2.2rem;
@@ -43,8 +43,8 @@
         .columns {
             display: flex;
             gap: 24px;
-            flex: 1; /* Занимает оставшееся пространство после header */
-            overflow: hidden; /* Предотвращает появление скролла на .columns */
+            flex: 1;
+            overflow: hidden;
         }
         .column-left {
             flex: 0 0 25%;
@@ -65,10 +65,9 @@
             padding: 24px;
             display: flex;
             flex-direction: column;
-            flex: 1; /* Растягивает карточку на всю высоту колонки */
-            overflow: hidden; /* Предотвращает появление скролла на .card */
+            flex: 1;
+            overflow: hidden;
         }
-        /* Добавлен стиль для #emptyCard, чтобы он соответствовал .card */
         #emptyCard {
             background: #f8f9fa;
             border-radius: 12px;
@@ -76,8 +75,8 @@
             padding: 24px;
             display: flex;
             flex-direction: column;
-            flex: 1; /* Растягивает карточку на всю высоту колонки */
-            overflow: hidden; /* Предотвращает появление скролла на .card */
+            flex: 1;
+            overflow: hidden;
         }
         .upload-area {
             border: 2px dashed #adb5bd;
@@ -90,8 +89,8 @@
             margin-bottom: 20px;
             display: flex;
             flex-direction: column;
-            justify-content: center; /* Центрирует содержимое по вертикали */
-            flex: 1; /* Позволяет области загрузки растянуться */
+            justify-content: center;
+            flex: 1;
         }
         .upload-area:hover, .upload-area.drag-over {
             border-color: #3498db;
@@ -117,7 +116,7 @@
             background: #2980b9;
         }
         .btnmanage {
-            background: #3498db; /* Используйте тот же цвет фона, что и основная кнопка */
+            background: #3498db;
             color: white;
             border: none;
             padding: 12px 24px;
@@ -128,9 +127,8 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            /* margin-top: 10px; Убрано, так как кнопка теперь внизу карточки */
-            margin-top: auto; /* Pushes the button to the bottom */
-            align-self: stretch; /* Makes the button full width */
+            margin-top: auto;
+            align-self: stretch;
         }
         .btnmanage:hover {
             background: #2980b9;
@@ -162,33 +160,33 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            flex-shrink: 0; /* Заголовок не сжимается */
+            flex-shrink: 0;
         }
         .link-list {
             list-style: none;
             padding-right: 8px;
-            flex: 1; /* Позволяет списку файлов растянуться на всё доступное место */
-            overflow-y: auto; /* Добавлен скролл для списка файлов */
+            flex: 1;
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
         }
         .link-item {
             padding: 16px 0;
             border-bottom: 1px solid #dee2e6;
-            flex-shrink: 0; /* Элементы списка не сжимаются */
+            flex-shrink: 0;
         }
         .link-item:last-child {
             border-bottom: none;
         }
         .article-header {
-            background-color: #0cb; /* Серый фон */
+            background-color: #0cb;
             padding: 10px 15px;
-            margin: 10px 0 5px 0; /* Отступы сверху и снизу */
+            margin: 10px 0 5px 0;
             font-weight: bold;
             color: #495057;
-            border-left: 4px solid #3498db; /* Добавлен акцент */
+            border-left: 4px solid #3498db;
             border-radius: 4px;
-            flex-shrink: 0; /* Заголовки артикулов не сжимаются */
+            flex-shrink: 0;
         }
         .link-preview {
             display: flex;
@@ -230,11 +228,11 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            flex: 1; /* Центрирует сообщение внутри .link-list */
+            flex: 1;
         }
         /* Стили для прогресс-бара */
         #progressContainer {
-            display: none; /* Скрыт по умолчанию */
+            display: none;
             width: 100%;
             background-color: #e0e0e0;
             border-radius: 4px;
@@ -252,6 +250,33 @@
             color: white;
             font-size: 0.8rem;
             font-weight: bold;
+        }
+        /* Новые стили для селекторов */
+        .selector-group {
+            margin-bottom: 20px;
+        }
+        .selector-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #495057;
+        }
+        .selector {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 1rem;
+            background: white;
+            cursor: pointer;
+        }
+        .selector:disabled {
+            background: #e9ecef;
+            cursor: not-allowed;
+            color: #6c757d;
+        }
+        .empty-card-content {
+            flex: 1;
         }
         @media (max-width: 900px) {
             .columns {
@@ -279,7 +304,7 @@
         </header>
         <div class="columns">
             <div class="column-left">
-                <div class="card" id="uploadCard"> <!-- Добавлен id -->
+                <div class="card" id="uploadCard">
                     <h2>📤 Загрузите ZIP-архив</h2>
                     <form id="uploadForm" enctype="multipart/form-data">
                         <div class="upload-area" id="dropArea">
@@ -291,27 +316,33 @@
                         <button type="submit" class="btn" id="uploadBtn" disabled>
                             <span>Загрузить архив</span>
                         </button>
-                        <!-- Прогресс-бар -->
                         <div id="progressContainer">
                             <div id="progressBar">
                                 <span id="progressText">0%</span>
                             </div>
                         </div>
                     </form>
-                    <!-- Кнопка "Управление ссылками" теперь вне формы, внизу карточки -->
                     <button class="btnmanage" id="manageBtn">
                         <span>Управление ссылками</span>
                     </button>
                 </div>
-                <!-- Новая пустая карточка -->
-                <div id="emptyCard" style="display: none;"> <!-- Скрыта по умолчанию, стилизация через CSS выше -->
+                <!-- Новая пустая карточка с селекторами -->
+                <div id="emptyCard" style="display: none;">
                     <h2>Управление ссылками</h2>
                     <div class="empty-card-content">
-                        <!-- Содержимое пустой карточки -->
-                        <p>Здесь будет содержимое для управления ссылками.</p>
-                        <p>Пока что карточка пуста.</p>
+                        <div class="selector-group">
+                            <label class="selector-label" for="albumSelector">Выберите альбом:</label>
+                            <select id="albumSelector" class="selector">
+                                <option value="">-- Загрузка альбомов --</option>
+                            </select>
+                        </div>
+                        <div class="selector-group">
+                            <label class="selector-label" for="articleSelector">Выберите артикул:</label>
+                            <select id="articleSelector" class="selector" disabled>
+                                <option value="">-- Сначала выберите альбом --</option>
+                            </select>
+                        </div>
                     </div>
-                                        <!-- Кнопка "Управление ссылками" теперь вне формы, внизу карточки -->
                     <button class="btnmanage" id="backToUploadBtn">
                         <span>Назад к загрузке</span>
                     </button>
@@ -328,6 +359,7 @@
                 </div>
             </div>
         </div>
+    </div>
     <script src="/static/index.js"></script>
 </body>
 </html>
