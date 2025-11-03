@@ -8,19 +8,28 @@ import logging
 import re
 import unicodedata
 from urllib.parse import quote
+from PIL import Image
+import io
+import hashlib
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'images'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 * 1024 # 16GB
+app.config['THUMBNAIL_FOLDER'] = 'thumbnails'
+app.config['THUMBNAIL_SIZE'] = (120, 120)  # Размер превью
+app.config['PREVIEW_SIZE'] = (400, 400)  # Размер для предпросмотра
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 * 1024  # 16GB
+
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['THUMBNAIL_FOLDER'], exist_ok=True)
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Конфигурация домена и базового URL
-domain = "stachlink.mooo.com" # Используйте переменные окружения для продакшена
+domain = "stachlink.mooo.com"  # Используйте переменные окружения для продакшена
 base_url = f"http://{domain}"  # Используем f-строку для подстановки значения переменной domain
+
 
 # --- Вспомогательные функции ---
 def safe_folder_name(name: str) -> str:
@@ -29,8 +38,62 @@ def safe_folder_name(name: str) -> str:
         return "unnamed"
     name = unicodedata.normalize('NFKD', name)
     name = re.sub(r'[^\w\s-]', '', name, flags=re.UNICODE)
-    name = re.sub(r'[-\s]+', '_', name, flags=re.UNICODE).strip('-_') # Заменяем пробелы на _
+    name = re.sub(r'[-\s]+', '_', name, flags=re.UNICODE).strip('-_')  # Заменяем пробелы на _
     return name[:255] if name else "unnamed"
+
+
+def generate_image_hash(file_path):
+    """Генерирует хэш для файла для кэширования"""
+    try:
+        with open(file_path, 'rb') as f:
+            return hashlib.md5(f.read()).hexdigest()
+    except Exception as e:
+        logger.error(f"Error generating hash for {file_path}: {e}")
+        return hashlib.md5(file_path.encode()).hexdigest()
+
+
+def create_thumbnail(original_path, size, quality=85):
+    """Создает миниатюру изображения"""
+    try:
+        with Image.open(original_path) as img:
+            # Конвертируем в RGB если нужно
+            if img.mode in ('RGBA', 'P'):
+                img = img.convert('RGB')
+
+            # Сохраняем пропорции
+            img.thumbnail(size, Image.Resampling.LANCZOS)
+
+            # Создаем буфер для сохранения
+            buffer = io.BytesIO()
+            img.save(buffer, 'JPEG', quality=quality, optimize=True)
+            buffer.seek(0)
+
+            return buffer
+    except Exception as e:
+        logger.error(f"Error creating thumbnail for {original_path}: {e}")
+        return None
+
+
+def get_thumbnail_path(original_path, size):
+    """Генерирует путь для миниатюры"""
+    file_hash = generate_image_hash(original_path)
+    filename = os.path.basename(original_path)
+    name, ext = os.path.splitext(filename)
+    size_str = f"{size[0]}x{size[1]}"
+
+    # Создаем структуру папок как в оригинале
+    rel_path = os.path.relpath(original_path, app.config['UPLOAD_FOLDER'])
+    rel_dir = os.path.dirname(rel_path)
+
+    thumbnail_filename = f"{name}_{size_str}_{file_hash[:8]}.jpg"
+
+    if rel_dir and rel_dir != '.':
+        thumbnail_dir = os.path.join(app.config['THUMBNAIL_FOLDER'], rel_dir)
+        os.makedirs(thumbnail_dir, exist_ok=True)
+        return os.path.join(thumbnail_dir, thumbnail_filename)
+    else:
+        return os.path.join(app.config['THUMBNAIL_FOLDER'], thumbnail_filename)
+
 
 # Инициализация SQLite базы данных
 def init_db():
@@ -49,6 +112,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 # Получение списка альбомов
 def get_albums():
     conn = sqlite3.connect('files.db')
@@ -58,6 +122,7 @@ def get_albums():
     conn.close()
     return albums
 
+
 # Получение списка артикулов для указанного альбома
 def get_articles(album_name):
     conn = sqlite3.connect('files.db')
@@ -66,6 +131,7 @@ def get_articles(album_name):
     articles = [row[0] for row in cursor.fetchall()]
     conn.close()
     return articles
+
 
 # Получение всех файлов из БД
 def get_all_files():
@@ -78,6 +144,7 @@ def get_all_files():
     results = cursor.fetchall()
     conn.close()
     return results
+
 
 # Синхронизация БД с файловой системой
 def sync_db_with_filesystem():
@@ -109,22 +176,28 @@ def sync_db_with_filesystem():
     # 3. Определяем, какие файлы нужно удалить из БД (есть в БД, нет в ФС)
     files_to_delete = db_files - fs_files
 
-    # 4. Определяем, какие файлы нужно добавить в БД (есть в ФС, нет в БД)
-    # Пока не реализуем добавление, так как добавление происходит через process_zip
-    # files_to_add = fs_files - db_files
-
-    # 5. Удаляем устаревшие записи из БД
-    deleted_count = 0
+    # 4. Очищаем превью для удаленных файлов
     for rel_path in files_to_delete:
+        original_path = os.path.join(app.config['UPLOAD_FOLDER'], rel_path)
+        thumbnail_path = get_thumbnail_path(original_path, app.config['THUMBNAIL_SIZE'])
+        preview_path = get_thumbnail_path(original_path, app.config['PREVIEW_SIZE'])
+
+        for thumb_path in [thumbnail_path, preview_path]:
+            if os.path.exists(thumb_path):
+                try:
+                    os.remove(thumb_path)
+                    logger.info(f"Deleted thumbnail: {thumb_path}")
+                except Exception as e:
+                    logger.error(f"Error deleting thumbnail {thumb_path}: {e}")
+
         cursor.execute("DELETE FROM files WHERE filename = ?", (rel_path,))
-        deleted_count += cursor.rowcount
 
     conn.commit()
     conn.close()
 
-    logger.info(f"Sync: Deleted {deleted_count} records from DB.")
-    # Возвращаем только удалённые, так как добавление файлов из ФС вне процесса ZIP не предусмотрено
+    logger.info(f"Sync: Deleted {len(files_to_delete)} records and their thumbnails from DB.")
     return list(files_to_delete), []
+
 
 # Обработка ZIP-архива
 def process_zip(zip_path):
@@ -159,7 +232,7 @@ def process_zip(zip_path):
                     continue
 
                 # Определяем артикул (подкаталог)
-                if rel_root.count(os.sep) == 0: # Уровень подкаталога альбома
+                if rel_root.count(os.sep) == 0:  # Уровень подкаталога альбома
                     article_folder_raw = os.path.basename(root)
                     article_folder_norm = safe_folder_name(article_folder_raw)
 
@@ -178,10 +251,11 @@ def process_zip(zip_path):
                                 _, ext = os.path.splitext(file_name.lower())
                                 if ext not in allowed_extensions:
                                     logger.info(f"Skipping non-image file: {file_path}")
-                                    continue # Пропускаем файл, если расширение не поддерживается
+                                    continue  # Пропускаем файл, если расширение не поддерживается
 
                                 # Относительный путь от папки images
-                                relative_file_path = os.path.relpath(file_path, app.config['UPLOAD_FOLDER']).replace(os.sep, '/')
+                                relative_file_path = os.path.relpath(file_path, app.config['UPLOAD_FOLDER']).replace(
+                                    os.sep, '/')
 
                                 # Имя файла
                                 file_name = os.path.basename(relative_file_path)
@@ -208,10 +282,12 @@ def process_zip(zip_path):
         logger.error(f"Error processing ZIP file: {e}")
         return False
 
+
 # --- Routes ---
 @app.route('/')
 def index():
     return render_template('index.html', base_url=base_url)
+
 
 # Эндпоинт синхронизации БД
 @app.route('/api/sync', methods=['POST'])
@@ -226,6 +302,7 @@ def api_sync():
     except Exception as e:
         logger.error(f"Error in sync endpoint: {e}")
         return jsonify({'error': f'Synchronization failed: {str(e)}'}), 500
+
 
 # Загрузка ZIP
 @app.route('/upload', methods=['POST'])
@@ -255,17 +332,20 @@ def upload_zip():
         else:
             return jsonify({'error': 'Failed to process ZIP file'}), 500
 
+
 # API: список всех файлов
 @app.route('/api/files')
 def api_files():
     files = get_all_files()
     return jsonify(files)
 
+
 # API: список альбомов
 @app.route('/api/albums')
 def api_albums():
     albums = get_albums()
     return jsonify(albums)
+
 
 # API: список артикулов для альбома
 @app.route('/api/articles/<album_name>')
@@ -295,6 +375,91 @@ def api_files_filtered(album_name, article_name=None):
     results = cursor.fetchall()
     conn.close()
     return jsonify(results)
+
+
+# Новые эндпоинты для превью
+@app.route('/api/thumbnails/<album_name>')
+@app.route('/api/thumbnails/<album_name>/<article_name>')
+def api_thumbnails(album_name, article_name=None):
+    """API для получения информации о файлах с превью (без загрузки самих изображений)"""
+    conn = sqlite3.connect('files.db')
+    cursor = conn.cursor()
+
+    if article_name:
+        cursor.execute(
+            """SELECT filename, album_name, article_number, public_link, created_at 
+               FROM files WHERE album_name=? AND article_number=? 
+               ORDER BY created_at DESC""",
+            (album_name, article_name)
+        )
+    else:
+        cursor.execute(
+            """SELECT filename, album_name, article_number, public_link, created_at 
+               FROM files WHERE album_name=? 
+               ORDER BY created_at DESC""",
+            (album_name,)
+        )
+
+    results = cursor.fetchall()
+    conn.close()
+
+    # Преобразуем результаты, добавляя пути к превью
+    files_data = []
+    for row in results:
+        filename, album, article, public_link, created_at = row
+        original_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+        # Генерируем пути к превью разных размеров
+        thumbnail_path = get_thumbnail_path(original_path, app.config['THUMBNAIL_SIZE'])
+        preview_path = get_thumbnail_path(original_path, app.config['PREVIEW_SIZE'])
+
+        files_data.append({
+            'filename': filename,
+            'album_name': album,
+            'article_number': article,
+            'public_link': public_link,
+            'created_at': created_at,
+            'thumbnail_url': f"/thumbnails/small/{filename}",
+            'preview_url': f"/thumbnails/medium/{filename}",
+            'file_size': os.path.getsize(original_path) if os.path.exists(original_path) else 0
+        })
+
+    return jsonify(files_data)
+
+
+@app.route('/thumbnails/small/<path:filename>')
+def serve_small_thumbnail(filename):
+    """Отдает маленькие превью (120x120)"""
+    return serve_thumbnail(filename, app.config['THUMBNAIL_SIZE'])
+
+
+@app.route('/thumbnails/medium/<path:filename>')
+def serve_medium_thumbnail(filename):
+    """Отдает средние превью (400x400)"""
+    return serve_thumbnail(filename, app.config['PREVIEW_SIZE'])
+
+
+def serve_thumbnail(filename, size):
+    """Обслуживает миниатюры, создавая их при необходимости"""
+    original_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    if not os.path.exists(original_path):
+        return jsonify({'error': 'File not found'}), 404
+
+    thumbnail_path = get_thumbnail_path(original_path, size)
+
+    # Создаем миниатюру если ее нет
+    if not os.path.exists(thumbnail_path):
+        thumbnail_buffer = create_thumbnail(original_path, size)
+        if thumbnail_buffer:
+            with open(thumbnail_path, 'wb') as f:
+                f.write(thumbnail_buffer.getvalue())
+        else:
+            # Возвращаем заглушку если не удалось создать превью
+            return send_from_directory('static', 'image-placeholder.png')
+
+    return send_from_directory(os.path.dirname(thumbnail_path),
+                               os.path.basename(thumbnail_path))
 
 
 # --- Main ---

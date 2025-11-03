@@ -16,6 +16,21 @@ let dropArea, zipFileInput, browseBtn, uploadBtn, uploadForm, linkList, currentA
 let manageBtn, uploadCard, emptyCard, backToUploadBtn;
 // Новые элементы для селекторов
 let albumSelector, articleSelector;
+
+// Конфигурация превью
+const PREVIEW_CONFIG = {
+    thumbnail: {
+        width: 120,
+        height: 120,
+        quality: 60
+    },
+    preview: {
+        width: 400,
+        height: 400,
+        quality: 80
+    }
+};
+
 // --- Конец глобальных переменных ---
 
 // --- Вспомогательная функция ---
@@ -25,6 +40,52 @@ const Path = {
         return parts[parts.length - 1] || path;
     }
 };
+
+// --- Система ленивой загрузки изображений ---
+class LazyLoader {
+    constructor() {
+        this.observer = null;
+        this.init();
+    }
+
+    init() {
+        if ('IntersectionObserver' in window) {
+            this.observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        this.loadImage(entry.target);
+                        this.observer.unobserve(entry.target);
+                    }
+                });
+            }, {
+                rootMargin: '50px 0px',
+                threshold: 0.1
+            });
+        }
+    }
+
+    observe(element) {
+        if (this.observer) {
+            this.observer.observe(element);
+        } else {
+            // Fallback: загружаем сразу если IntersectionObserver не поддерживается
+            this.loadImage(element);
+        }
+    }
+
+    loadImage(img) {
+        const src = img.getAttribute('data-src');
+        if (src) {
+            img.onload = () => {
+                img.classList.add('loaded');
+            };
+            img.src = src;
+            img.removeAttribute('data-src');
+        }
+    }
+}
+
+const lazyLoader = new LazyLoader();
 
 // --- Функция инициализации DOM элементов ---
 function initializeElements() {
@@ -193,11 +254,136 @@ function clearLinkList() {
     }
 }
 
-// --- Загрузка и отображение файлов для альбома ---
+// --- Создание элемента списка файлов с превью ---
+function createFileListItem(item, parentElement) {
+    const li = document.createElement('li');
+    li.className = 'link-item';
+
+    const fileData = typeof item === 'object' ? item : {
+        filename: item[0],
+        album_name: item[1],
+        article_number: item[2],
+        public_link: item[3],
+        created_at: item[4],
+        thumbnail_url: `/thumbnails/small/${item[0]}`,
+        preview_url: `/thumbnails/medium/${item[0]}`,
+        file_size: 0
+    };
+
+    const previewDiv = document.createElement('div');
+    previewDiv.className = 'link-preview';
+
+    const img = document.createElement('img');
+    img.className = 'lazy-image';
+    img.width = PREVIEW_CONFIG.thumbnail.width;
+    img.height = PREVIEW_CONFIG.thumbnail.height;
+
+    // Заглушка пока изображение не загружено
+    img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjFGNUY5Ii8+CjxwYXRoIGQ9Ik0zNi41IDI0LjVIMjMuNVYzNy41SDM2LjVWMjQuNVoiIGZpbGw9IiNEOEUxRTYiLz4KPHBhdGggZD0iTTI1IDI2SDM1VjI5SDI1VjI2WiIgZmlsbD0iI0Q4RTFFNiIvPgo8cGF0aCBkPSJNMjUgMzFIMzJWMzRIMjVWMzFaIiBmaWxsPSIjRDhFMUU2Ii8+Cjwvc3ZnPg==';
+    img.setAttribute('data-src', fileData.thumbnail_url);
+    img.alt = Path.basename(fileData.filename);
+
+    // Добавляем обработчик для показа полноразмерного превью
+    img.addEventListener('click', () => showPreviewModal(fileData));
+
+    img.onerror = function() {
+        this.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjFGNUY5Ii8+CjxwYXRoIGQ9Ik0zNi41IDI0LjVIMjMuNVYzNy41SDM2LjVWMjQuNVoiIGZpbGw9IiNEOEUxRTYiLz4KPHBhdGggZD0iTTI1IDI2SDM1VjI5SDI1VjI2WiIgZmlsbD0iI0Q4RTFFNiIvPgo8cGF0aCBkPSJNMjUgMzFIMzJWMzRIMjVWMzFaIiBmaWxsPSIjRDhFMUU2Ii8+Cjwvc3ZnPg==';
+    };
+
+    const urlDiv = document.createElement('div');
+    urlDiv.className = 'link-url';
+    const urlInput = document.createElement('input');
+    urlInput.type = 'text';
+    urlInput.value = fileData.public_link;
+    urlInput.readOnly = true;
+    urlInput.className = 'link-url-input';
+    urlInput.title = 'Прямая ссылка на изображение';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'btn btn-copy copy-btn';
+    copyBtn.textContent = 'Копировать';
+    copyBtn.addEventListener('click', () => copyToClipboard(fileData.public_link, copyBtn));
+
+    const fileInfo = document.createElement('div');
+    fileInfo.className = 'file-info';
+    fileInfo.textContent = `${Path.basename(fileData.filename)} • ${formatFileSize(fileData.file_size || 0)}`;
+
+    urlDiv.appendChild(urlInput);
+    previewDiv.appendChild(img);
+    previewDiv.appendChild(urlDiv);
+    previewDiv.appendChild(copyBtn);
+    li.appendChild(previewDiv);
+    li.appendChild(fileInfo);
+    parentElement.appendChild(li);
+
+    // Начинаем ленивую загрузку
+    lazyLoader.observe(img);
+}
+
+// --- Модальное окно для просмотра полноразмерного изображения ---
+function showPreviewModal(fileData) {
+    // Создаем модальное окно если его нет
+    let modal = document.getElementById('previewModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'previewModal';
+        modal.className = 'preview-modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <button class="modal-close">&times;</button>
+                <img class="modal-image" src="" alt="">
+                <div class="modal-info">
+                    <div class="modal-filename"></div>
+                    <div class="modal-actions">
+                        <button class="btn btn-copy-full">Копировать ссылку</button>
+                        <a class="btn btn-view-original" target="_blank">Открыть оригинал</a>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // Обработчики для модального окна
+        modal.querySelector('.modal-close').addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+
+        // Закрытие по ESC
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.style.display === 'flex') {
+                modal.style.display = 'none';
+            }
+        });
+    }
+
+    // Заполняем модальное окно данными
+    const modalImage = modal.querySelector('.modal-image');
+    const modalFilename = modal.querySelector('.modal-filename');
+    const copyFullBtn = modal.querySelector('.btn-copy-full');
+    const viewOriginalBtn = modal.querySelector('.btn-view-original');
+
+    // Показываем среднее превью в модальном окне
+    modalImage.src = fileData.preview_url;
+    modalFilename.textContent = Path.basename(fileData.filename);
+    viewOriginalBtn.href = fileData.public_link;
+
+    copyFullBtn.onclick = () => copyToClipboard(fileData.public_link, copyFullBtn);
+
+    modal.style.display = 'flex';
+}
+
+// --- Загрузка и отображение файлов для альбома с превью ---
 async function showFilesForAlbum(albumName, articleName = '') {
     if (!currentAlbumTitle || !linkList) {
-         console.error('DOM elements for file list not initialized');
-         return;
+        console.error('DOM elements for file list not initialized');
+        return;
     }
 
     let title = `Изображения в "${albumName}"`;
@@ -207,25 +393,24 @@ async function showFilesForAlbum(albumName, articleName = '') {
     currentAlbumTitle.textContent = title;
 
     try {
-        const response = await fetch('/api/files');
+        // Используем новый эндпоинт с превью
+        const url = articleName
+            ? `/api/thumbnails/${encodeURIComponent(albumName)}/${encodeURIComponent(articleName)}`
+            : `/api/thumbnails/${encodeURIComponent(albumName)}`;
+
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to load file list');
-        const allFiles = await response.json();
+        const files = await response.json();
 
-        // Фильтруем по имени альбома и артикулу (если указан)
-        let albumFiles = allFiles.filter(item => item[1] === albumName);
-        if (articleName) {
-            albumFiles = albumFiles.filter(item => item[2] === articleName);
-        }
-
-        if (albumFiles.length === 0) {
+        if (files.length === 0) {
             linkList.innerHTML = '<div class="empty-state">В выбранной категории нет файлов.</div>';
             return;
         }
 
-        // Группировка файлов по артикулам (если не выбран конкретный артикул)
+        // Группировка файлов по артикулам
         const groupedFiles = {};
-        albumFiles.forEach(item => {
-            const article = item[2];
+        files.forEach(item => {
+            const article = item.article_number;
             if (!groupedFiles[article]) {
                 groupedFiles[article] = [];
             }
@@ -242,13 +427,13 @@ async function showFilesForAlbum(albumName, articleName = '') {
                 return match ? parseInt(match[1], 10) : 0;
             };
 
-            albumFiles.sort((a, b) => {
-                const suffixA = extractSuffix(a[0]);
-                const suffixB = extractSuffix(b[0]);
+            files.sort((a, b) => {
+                const suffixA = extractSuffix(a.filename);
+                const suffixB = extractSuffix(b.filename);
                 return suffixA - suffixB;
             });
 
-            albumFiles.forEach(item => {
+            files.forEach(item => {
                 createFileListItem(item, linkList);
             });
         } else {
@@ -268,8 +453,8 @@ async function showFilesForAlbum(albumName, articleName = '') {
                 };
 
                 filesForArticle.sort((a, b) => {
-                    const suffixA = extractSuffix(a[0]);
-                    const suffixB = extractSuffix(b[0]);
+                    const suffixA = extractSuffix(a.filename);
+                    const suffixB = extractSuffix(b.filename);
                     return suffixA - suffixB;
                 });
 
@@ -282,59 +467,6 @@ async function showFilesForAlbum(albumName, articleName = '') {
         console.error('Error loading files:', error);
         linkList.innerHTML = `<div class="empty-state">Ошибка загрузки файлов.</div>`;
     }
-}
-
-function createFileListItem(item, parentElement) {
-    const li = document.createElement('li');
-    li.className = 'link-item';
-    const fullFilePath = item[0];
-    const absoluteUrl = item[3];
-
-    let imageUrl = '/images/';
-    try {
-        const urlObj = new URL(absoluteUrl);
-        imageUrl = urlObj.pathname;
-    } catch (e) {
-        console.error("Error parsing public_link:", absoluteUrl, e);
-        imageUrl = `/images/${fullFilePath.replace(/\\/g, '/')}`;
-    }
-
-    const previewDiv = document.createElement('div');
-    previewDiv.className = 'link-preview';
-
-    const img = document.createElement('img');
-    img.src = imageUrl;
-    img.alt = Path.basename(fullFilePath);
-    img.onerror = function() {
-        this.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSIjRjFGNUY5Ii8+CjxwYXRoIGQ9Ik0zNi41IDI0LjVIMjMuNVYzNy41SDM2LjVWMjQuNVoiIGZpbGw9IiNEOEUxRTYiLz4KPHBhdGggZD0iTTI1IDI2SDM1VjI5SDI1VjI2WiIgZmlsbD0iI0Q4RTFFNiIvPgo8cGF0aCBkPSJNMjUgMzFIMzJWMzRIMjVWMzFaIiBmaWxsPSIjRDhFMUU2Ii8+Cjwvc3ZnPg==';
-    };
-
-    const urlDiv = document.createElement('div');
-    urlDiv.className = 'link-url';
-    const urlInput = document.createElement('input');
-    urlInput.type = 'text';
-    urlInput.value = absoluteUrl;
-    urlInput.readOnly = true;
-    urlInput.className = 'link-url-input';
-    urlInput.title = 'Прямая ссылка на изображение';
-
-    const copyBtn = document.createElement('button');
-    copyBtn.type = 'button';
-    copyBtn.className = 'btn btn-copy copy-btn';
-    copyBtn.textContent = 'Копировать';
-    copyBtn.addEventListener('click', () => copyToClipboard(absoluteUrl, copyBtn));
-
-    const fileInfo = document.createElement('div');
-    fileInfo.className = 'file-info';
-    fileInfo.textContent = fullFilePath;
-
-    urlDiv.appendChild(urlInput);
-    previewDiv.appendChild(img);
-    previewDiv.appendChild(urlDiv);
-    previewDiv.appendChild(copyBtn);
-    li.appendChild(previewDiv);
-    li.appendChild(fileInfo);
-    parentElement.appendChild(li);
 }
 
 // --- Инициализация после загрузки DOM ---
