@@ -307,8 +307,6 @@
             }
         }
 
-        /* Добавляем в конец существующих стилей */
-
         /* Стили для модального окна предпросмотра */
         .preview-modal {
             display: none;
@@ -394,6 +392,188 @@
             opacity: 1;
         }
 
+        /* НОВЫЕ СТИЛИ ДЛЯ МОДАЛЬНОГО ОКНА XLSX */
+        .xlsx-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .xlsx-modal-content {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 480px;
+            position: relative;
+            overflow: hidden;
+            animation: slideUp 0.3s ease;
+        }
+
+        .xlsx-modal-header {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            padding: 24px;
+            text-align: center;
+        }
+
+        .xlsx-modal-header h3 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .xlsx-modal-body {
+            padding: 32px;
+        }
+
+        .xlsx-modal-footer {
+            padding: 20px 32px 32px;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 0.95rem;
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 1rem;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .form-select:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .form-select:hover {
+            border-color: #ced4da;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-1px);
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: white;
+            font-size: 1.2rem;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: rotate(90deg);
+        }
+
+        /* Анимации */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Адаптивность для модального окна */
+        @media (max-width: 600px) {
+            .xlsx-modal-content {
+                max-width: 95vw;
+                margin: 20px;
+            }
+
+            .xlsx-modal-body {
+                padding: 24px;
+            }
+
+            .xlsx-modal-footer {
+                padding: 16px 24px 24px;
+                flex-direction: column;
+            }
+
+            .btn-primary, .btn-secondary {
+                width: 100%;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -466,31 +646,33 @@
         </div>
     </div>
 
-    <!-- Модальное окно создания XLSX -->
-    <div id="xlsxModal" class="preview-modal" style="display: none;">
-        <div class="modal-content" style="max-width: 500px;">
-            <button class="modal-close">&times;</button>
-            <h3 style="margin-bottom: 20px;">Создание документа XLSX</h3>
-
-            <div class="selector-group">
-                <label class="selector-label">Шаблон экспорта:</label>
-                <select id="xlsxTemplateSelect" class="selector">
-                    <option value="in_row">В строку</option>
-                    <option value="in_cell">В ячейку</option>
-                </select>
+    <!-- Обновленное модальное окно создания XLSX -->
+    <div id="xlsxModal" class="xlsx-modal">
+        <div class="xlsx-modal-content">
+            <div class="xlsx-modal-header">
+                <h3>📊 Создание документа XLSX</h3>
+                <button class="close-btn">&times;</button>
             </div>
+            <div class="xlsx-modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="xlsxTemplateSelect">Шаблон экспорта:</label>
+                    <select id="xlsxTemplateSelect" class="form-select">
+                        <option value="in_row">В строку (каждая ссылка в отдельной ячейке)</option>
+                        <option value="in_cell">В ячейку (все ссылки в одной ячейке)</option>
+                    </select>
+                </div>
 
-            <div class="selector-group" id="separatorGroup" style="display: none;">
-                <label class="selector-label">Разделитель:</label>
-                <select id="separatorSelect" class="selector">
-                    <option value="comma">Запятая</option>
-                    <option value="newline">Перенос строки</option>
-                </select>
+                <div class="form-group" id="separatorGroup" style="display: none;">
+                    <label class="form-label" for="separatorSelect">Разделитель ссылок:</label>
+                    <select id="separatorSelect" class="form-select">
+                        <option value="comma">Запятая с пробелом</option>
+                        <option value="newline">Перенос строки</option>
+                    </select>
+                </div>
             </div>
-
-            <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
-                <button class="btn" id="generateXlsxBtn">Создать</button>
-                <button class="btn btn-copy" id="cancelXlsxBtn">Отмена</button>
+            <div class="xlsx-modal-footer">
+                <button class="btn-secondary" id="cancelXlsxBtn">Отмена</button>
+                <button class="btn-primary" id="generateXlsxBtn">Создать документ</button>
             </div>
         </div>
     </div>

@@ -28,7 +28,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Конфигурация домена и базового URL
-domain = "stachlink.mooo.com"
+domain = "tecnobook"
 base_url = f"http://{domain}"
 
 
@@ -188,39 +188,87 @@ def get_all_files():
 
 
 # Синхронизация БД с файловой системой
+# Синхронизация БД с файловой системой
 def sync_db_with_filesystem():
     """
     Синхронизирует базу данных с файловой системой.
-    Удаляет из БД записи для файлов, которые больше не существуют в папке images.
+    Удаляет из БД записи для файлов, которые больше не существуют в папке images,
+    и добавляет новые файлы, которые появились в файловой системе.
     """
     conn = sqlite3.connect('files.db')
     cursor = conn.cursor()
 
-    cursor.execute("SELECT filename FROM files")
-    db_files = set(row[0] for row in cursor.fetchall())
+    # Получаем все файлы из БД
+    cursor.execute("SELECT filename, album_name, article_number, public_link FROM files")
+    db_files = {row[0]: {'album_name': row[1], 'article_number': row[2], 'public_link': row[3]} for row in
+                cursor.fetchall()}
 
-    fs_files = set()
+    # Сканируем файловую систему
+    fs_files = {}
     allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.svg'}
+
     for root, dirs, files in os.walk(app.config['UPLOAD_FOLDER']):
         for file in files:
             _, ext = os.path.splitext(file.lower())
             if ext in allowed_extensions:
                 full_path = os.path.join(root, file)
-                rel_path = os.path.relpath(full_path, app.config['UPLOAD_FOLDER'])
-                fs_files.add(rel_path.replace(os.sep, '/'))
+                rel_path = os.path.relpath(full_path, app.config['UPLOAD_FOLDER']).replace(os.sep, '/')
 
-    files_to_delete = db_files - fs_files
+                # Определяем альбом и артикул из пути
+                path_parts = rel_path.split('/')
+                if len(path_parts) >= 1:
+                    album_name = path_parts[0]
 
-    # Очищаем превью для удаленных файлов
+                    # Если файл находится в подпапке (артикуле)
+                    if len(path_parts) >= 3:
+                        article_number = path_parts[1]
+                    else:
+                        # Если файл напрямую в альбоме, используем имя файла без расширения как артикул
+                        article_number = os.path.splitext(file)[0]
+
+                    # Обеспечиваем безопасные имена
+                    album_name = safe_folder_name(album_name)
+                    article_number = safe_folder_name(article_number)
+
+                    encoded_path = quote(rel_path, safe='/')
+                    public_link = f"{base_url}/images/{encoded_path}"
+
+                    fs_files[rel_path] = {
+                        'album_name': album_name,
+                        'article_number': article_number,
+                        'public_link': public_link
+                    }
+
+    # Находим файлы для удаления (есть в БД, но нет в ФС)
+    files_to_delete = set(db_files.keys()) - set(fs_files.keys())
+
+    # Находим файлы для добавления (есть в ФС, но нет в БД)
+    files_to_add = set(fs_files.keys()) - set(db_files.keys())
+
+    # Удаляем отсутствующие файлы из БД и их превью
     for rel_path in files_to_delete:
         cleanup_file_thumbnails(rel_path)
         cursor.execute("DELETE FROM files WHERE filename = ?", (rel_path,))
+        logger.info(f"Sync: Deleted from DB - {rel_path}")
+
+    # Добавляем новые файлы в БД
+    for rel_path in files_to_add:
+        file_info = fs_files[rel_path]
+        try:
+            cursor.execute(
+                "INSERT INTO files (filename, album_name, article_number, public_link) VALUES (?, ?, ?, ?)",
+                (rel_path, file_info['album_name'], file_info['article_number'], file_info['public_link'])
+            )
+            logger.info(
+                f"Sync: Added to DB - {rel_path} (Album: {file_info['album_name']}, Article: {file_info['article_number']})")
+        except Exception as e:
+            logger.error(f"Sync: Error adding file {rel_path} to DB: {e}")
 
     conn.commit()
     conn.close()
 
-    logger.info(f"Sync: Deleted {len(files_to_delete)} records and their thumbnails from DB.")
-    return list(files_to_delete), []
+    logger.info(f"Sync: Deleted {len(files_to_delete)} records, added {len(files_to_add)} records")
+    return list(files_to_delete), list(files_to_add)
 
 
 # Обработка ZIP-архива
