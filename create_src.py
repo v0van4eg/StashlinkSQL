@@ -35,6 +35,7 @@ def load_gitignore_rules(startpath):
     ignore_rules.append("*.xlsx")
     ignore_rules.append("Readme.md")
     ignore_rules.append("images/*")
+    ignore_rules.append("thumbnails/*")
     return ignore_rules
 
 
