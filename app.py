@@ -482,6 +482,150 @@ def serve_thumbnail(filename, size):
                                os.path.basename(thumbnail_path))
 
 
+# app.py (добавить в конец файла, перед if __name__ == '__main__')
+
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+import json
+
+
+@app.route('/api/export-xlsx', methods=['POST'])
+def api_export_xlsx():
+    """Создание XLSX документа с ссылками"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        album_name = data.get('album_name')
+        article_name = data.get('article_name')  # Может быть None для всех артикулов
+        export_type = data.get('export_type')  # 'in_row' или 'in_cell'
+        separator = data.get('separator', ', ')  # Разделитель для варианта "в ячейку"
+
+        if not album_name or not export_type:
+            return jsonify({'error': 'Missing required parameters'}), 400
+
+        # Получаем данные из БД
+        conn = sqlite3.connect('files.db')
+        cursor = conn.cursor()
+
+        if article_name:
+            cursor.execute(
+                "SELECT article_number, public_link FROM files WHERE album_name=? AND article_number=? ORDER BY article_number, filename",
+                (album_name, article_name)
+            )
+        else:
+            cursor.execute(
+                "SELECT article_number, public_link FROM files WHERE album_name=? ORDER BY article_number, filename",
+                (album_name,)
+            )
+
+        results = cursor.fetchall()
+        conn.close()
+
+        if not results:
+            return jsonify({'error': 'No data found for export'}), 404
+
+        # Группируем ссылки по артикулам
+        articles_data = {}
+        for article, link in results:
+            if article not in articles_data:
+                articles_data[article] = []
+            articles_data[article].append(link)
+
+        # Создаем Excel файл
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Ссылки на изображения"
+
+        # Стили для шапки
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+
+        if export_type == 'in_row':
+            # Вариант "В строку"
+            # Определяем максимальное количество ссылок
+            max_links = max(len(links) for links in articles_data.values())
+
+            # Создаем шапку
+            headers = ['Артикул'] + [f'Ссылка {i + 1}' for i in range(max_links)]
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+
+            # Заполняем данные
+            for row, (article, links) in enumerate(articles_data.items(), 2):
+                ws.cell(row=row, column=1, value=article)
+                for col, link in enumerate(links, 2):
+                    ws.cell(row=row, column=col, value=link)
+
+        elif export_type == 'in_cell':
+            # Вариант "В ячейку"
+            headers = ['Артикул', 'Ссылки']
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+
+            # Заполняем данные
+            for row, (article, links) in enumerate(articles_data.items(), 2):
+                ws.cell(row=row, column=1, value=article)
+                # Объединяем ссылки через разделитель
+                links_text = separator.join(links)
+                ws.cell(row=row, column=2, value=links_text)
+
+        # Авто-ширина колонок
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column_letter].width = adjusted_width
+
+        # Сохраняем файл во временную директорию
+        import tempfile
+        import os
+        from flask import send_file
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+            wb.save(tmp_file.name)
+            tmp_filename = tmp_file.name
+
+        # Генерируем имя файла
+        filename = f"links_{album_name}"
+        if article_name:
+            filename += f"_{article_name}"
+        filename += ".xlsx"
+
+        # Отправляем файл
+        response = send_file(
+            tmp_filename,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+        # Удаляем временный файл после отправки
+        @response.call_on_close
+        def remove_temp_file():
+            try:
+                os.unlink(tmp_filename)
+            except Exception as e:
+                logger.error(f"Error removing temporary file {tmp_filename}: {e}")
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Error creating XLSX file: {e}")
+        return jsonify({'error': f'Failed to create XLSX file: {str(e)}'}), 500
+
+
 # --- Main ---
 if __name__ == '__main__':
     init_db()

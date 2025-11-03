@@ -16,6 +16,8 @@ let dropArea, zipFileInput, browseBtn, uploadBtn, uploadForm, linkList, currentA
 let manageBtn, uploadCard, emptyCard, backToUploadBtn;
 // Новые элементы для селекторов
 let albumSelector, articleSelector;
+// Элементы для XLSX
+let createXlsxBtn, xlsxModal, xlsxTemplateSelect, separatorSelect, generateXlsxBtn, cancelXlsxBtn;
 
 // Конфигурация превью
 const PREVIEW_CONFIG = {
@@ -108,9 +110,18 @@ function initializeElements() {
     albumSelector = document.getElementById('albumSelector');
     articleSelector = document.getElementById('articleSelector');
 
+    // Новые элементы для XLSX
+    createXlsxBtn = document.getElementById('createXlsxBtn');
+    xlsxModal = document.getElementById('xlsxModal');
+    xlsxTemplateSelect = document.getElementById('xlsxTemplateSelect');
+    separatorSelect = document.getElementById('separatorSelect');
+    generateXlsxBtn = document.getElementById('generateXlsxBtn');
+    cancelXlsxBtn = document.getElementById('cancelXlsxBtn');
+
     if (!dropArea || !zipFileInput || !browseBtn || !uploadBtn || !uploadForm || !linkList || !currentAlbumTitle ||
         !manageBtn || !backToUploadBtn || !uploadCard || !emptyCard || !progressContainer || !progressBar || !progressText ||
-        !albumSelector || !articleSelector) {
+        !albumSelector || !articleSelector || !createXlsxBtn || !xlsxModal || !xlsxTemplateSelect || !separatorSelect ||
+        !generateXlsxBtn || !cancelXlsxBtn) {
         console.error('One or more required DOM elements not found!');
         return false;
     }
@@ -469,6 +480,136 @@ async function showFilesForAlbum(albumName, articleName = '') {
     }
 }
 
+// --- Функции для работы с XLSX ---
+function initXlsxModal() {
+    if (!createXlsxBtn || !xlsxModal) return;
+
+    createXlsxBtn.addEventListener('click', showXlsxModal);
+    cancelXlsxBtn.addEventListener('click', hideXlsxModal);
+
+    xlsxTemplateSelect.addEventListener('change', function() {
+        const separatorGroup = document.getElementById('separatorGroup');
+        if (this.value === 'in_cell') {
+            separatorGroup.style.display = 'block';
+        } else {
+            separatorGroup.style.display = 'none';
+        }
+    });
+
+    generateXlsxBtn.addEventListener('click', generateXlsxFile);
+
+    // Закрытие модального окна при клике вне его
+    xlsxModal.addEventListener('click', function(e) {
+        if (e.target === xlsxModal) {
+            hideXlsxModal();
+        }
+    });
+
+    // Закрытие по ESC
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && xlsxModal.style.display === 'flex') {
+            hideXlsxModal();
+        }
+    });
+}
+
+function showXlsxModal() {
+    const selectedAlbum = albumSelector.value;
+    if (!selectedAlbum) {
+        alert('Сначала выберите альбом');
+        return;
+    }
+
+    xlsxModal.style.display = 'flex';
+    // Сброс выбора
+    xlsxTemplateSelect.value = 'in_row';
+    separatorSelect.value = 'comma';
+    document.getElementById('separatorGroup').style.display = 'none';
+}
+
+function hideXlsxModal() {
+    xlsxModal.style.display = 'none';
+}
+
+async function generateXlsxFile() {
+    const selectedAlbum = albumSelector.value;
+    const selectedArticle = articleSelector.value || null;
+    const exportType = xlsxTemplateSelect.value;
+    const separatorType = separatorSelect.value;
+
+    if (!selectedAlbum || !exportType) {
+        alert('Заполните все обязательные поля');
+        return;
+    }
+
+    // Определяем разделитель
+    let separator = ', ';
+    if (separatorType === 'newline') {
+        separator = '\n';
+    }
+
+    const generateBtn = generateXlsxBtn;
+    const originalText = generateBtn.innerHTML;
+
+    try {
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = '<span>Создание...</span>';
+
+        const response = await fetch('/api/export-xlsx', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                album_name: selectedAlbum,
+                article_name: selectedArticle,
+                export_type: exportType,
+                separator: separator
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Ошибка при создании файла');
+        }
+
+        // Скачиваем файл
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+
+        // Генерируем имя файла
+        let filename = `links_${selectedAlbum}`;
+        if (selectedArticle) {
+            filename += `_${selectedArticle}`;
+        }
+        filename += '.xlsx';
+
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        hideXlsxModal();
+
+    } catch (error) {
+        console.error('Error generating XLSX:', error);
+        alert(`Ошибка при создании файла: ${error.message}`);
+    } finally {
+        generateBtn.disabled = false;
+        generateBtn.innerHTML = originalText;
+    }
+}
+
+function updateCreateXlsxButtonState() {
+    if (createXlsxBtn) {
+        createXlsxBtn.disabled = !albumSelector.value;
+    }
+}
+
 // --- Инициализация после загрузки DOM ---
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM fully loaded and parsed");
@@ -524,6 +665,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const selectedAlbum = this.value;
         loadArticles(selectedAlbum);
         clearLinkList();
+        updateCreateXlsxButtonState();
 
         if (selectedAlbum) {
             showFilesForAlbum(selectedAlbum);
@@ -645,4 +787,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Инициализируем UI
     updateUI();
     clearLinkList();
+    initXlsxModal();
+    updateCreateXlsxButtonState();
 });
