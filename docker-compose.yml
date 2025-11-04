@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -11,15 +9,15 @@ services:
       - ./static:/app/static:ro
       - ./templates:/app/templates:ro
       - ./images:/app/images:rw # Добавлено rw для доступа к изображениям
+      - ./thumbnails:/app/thumbnails:rw
     restart: unless-stopped
 
-#  app:
-#    build: .
-#    container_name: app
-#    depends_on:
-#      - nginx
-#    volumes:
-#      - ./images:/app/images:rw # Добавлено rw для доступа к изображениям
-#      - ./files.db:/app/files.db # Монтируем БД
-#      - ./:/app
-#    restart: unless-stopped
+  app:
+    build: .
+    image: pichost
+    container_name: app
+    depends_on:
+      - nginx
+    volumes:
+      - ./:/app
+    restart: unless-stopped
