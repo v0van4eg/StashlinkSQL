@@ -1,5 +1,6 @@
-images
+.idea
+.venv
+images/*
 __pycache__
 files.db
-thumbnails
-
+thumbnails/*
