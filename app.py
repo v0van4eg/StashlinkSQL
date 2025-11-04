@@ -2,7 +2,7 @@
 
 import os
 import zipfile
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
 import sqlite3
 import logging
 import re
@@ -12,6 +12,10 @@ from PIL import Image
 import io
 import hashlib
 import shutil
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+import json
+import tempfile
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'images'
@@ -20,6 +24,7 @@ app.config['THUMBNAIL_SIZE'] = (120, 120)  # Размер превью
 app.config['PREVIEW_SIZE'] = (400, 400)  # Размер для предпросмотра
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 * 1024  # 16GB
 
+# Создаем папки если их нет
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['THUMBNAIL_FOLDER'], exist_ok=True)
 
@@ -27,10 +32,18 @@ os.makedirs(app.config['THUMBNAIL_FOLDER'], exist_ok=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Конфигурация домена и базового URL
-domain = "tecnobook"
+# Конфигурация домена и базового URL получаем из переменных окружения
+domain = os.environ.get('DOMAIN', 'pichosting.mooo.com')
 base_url = f"http://{domain}"
 
+# Полный путь к базе данных
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'files.db')
+
+def get_db_connection():
+    """Создает соединение с базой данных"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 # --- Вспомогательные функции ---
 def safe_folder_name(name: str) -> str:
@@ -42,7 +55,6 @@ def safe_folder_name(name: str) -> str:
     name = re.sub(r'[-\s]+', '_', name, flags=re.UNICODE).strip('-_')
     return name[:255] if name else "unnamed"
 
-
 def generate_image_hash(file_path):
     """Генерирует хэш для файла для кэширования"""
     try:
@@ -51,7 +63,6 @@ def generate_image_hash(file_path):
     except Exception as e:
         logger.error(f"Error generating hash for {file_path}: {e}")
         return hashlib.md5(file_path.encode()).hexdigest()
-
 
 def create_thumbnail(original_path, size, quality=85):
     """Создает миниатюру изображения"""
@@ -70,7 +81,6 @@ def create_thumbnail(original_path, size, quality=85):
     except Exception as e:
         logger.error(f"Error creating thumbnail for {original_path}: {e}")
         return None
-
 
 def get_thumbnail_path(original_path, size):
     """Генерирует путь для миниатюры"""
@@ -91,7 +101,6 @@ def get_thumbnail_path(original_path, size):
     else:
         return os.path.join(app.config['THUMBNAIL_FOLDER'], thumbnail_filename)
 
-
 def cleanup_album_thumbnails(album_name):
     """Очищает все превью для указанного альбома"""
     try:
@@ -103,7 +112,6 @@ def cleanup_album_thumbnails(album_name):
             logger.info(f"No thumbnails found for album: {album_name}")
     except Exception as e:
         logger.error(f"Error cleaning up thumbnails for album {album_name}: {e}")
-
 
 def cleanup_file_thumbnails(filename):
     """Очищает превью для конкретного файла"""
@@ -136,48 +144,49 @@ def cleanup_file_thumbnails(filename):
     except Exception as e:
         logger.error(f"Error cleaning up thumbnails for file {filename}: {e}")
 
-
 # Инициализация SQLite базы данных
 def init_db():
-    conn = sqlite3.connect('files.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS files (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            filename TEXT NOT NULL,
-            album_name TEXT NOT NULL,
-            article_number TEXT NOT NULL,
-            public_link TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
+    """Инициализация базы данных при запуске приложения"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT NOT NULL,
+                album_name TEXT NOT NULL,
+                article_number TEXT NOT NULL,
+                public_link TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing database: {e}")
 
 # Получение списка альбомов
 def get_albums():
-    conn = sqlite3.connect('files.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT DISTINCT album_name FROM files")
     albums = [row[0] for row in cursor.fetchall()]
     conn.close()
     return albums
 
-
 # Получение списка артикулов для указанного альбома
 def get_articles(album_name):
-    conn = sqlite3.connect('files.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT DISTINCT article_number FROM files WHERE album_name=?", (album_name,))
     articles = [row[0] for row in cursor.fetchall()]
     conn.close()
     return articles
 
-
 # Получение всех файлов из БД
 def get_all_files():
-    conn = sqlite3.connect('files.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT filename, album_name, article_number, public_link, created_at FROM files ORDER BY created_at DESC"
@@ -186,8 +195,6 @@ def get_all_files():
     conn.close()
     return results
 
-
-# Синхронизация БД с файловой системой
 # Синхронизация БД с файловой системой
 def sync_db_with_filesystem():
     """
@@ -195,13 +202,12 @@ def sync_db_with_filesystem():
     Удаляет из БД записи для файлов, которые больше не существуют в папке images,
     и добавляет новые файлы, которые появились в файловой системе.
     """
-    conn = sqlite3.connect('files.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     # Получаем все файлы из БД
     cursor.execute("SELECT filename, album_name, article_number, public_link FROM files")
-    db_files = {row[0]: {'album_name': row[1], 'article_number': row[2], 'public_link': row[3]} for row in
-                cursor.fetchall()}
+    db_files = {row[0]: {'album_name': row[1], 'article_number': row[2], 'public_link': row[3]} for row in cursor.fetchall()}
 
     # Сканируем файловую систему
     fs_files = {}
@@ -259,8 +265,7 @@ def sync_db_with_filesystem():
                 "INSERT INTO files (filename, album_name, article_number, public_link) VALUES (?, ?, ?, ?)",
                 (rel_path, file_info['album_name'], file_info['article_number'], file_info['public_link'])
             )
-            logger.info(
-                f"Sync: Added to DB - {rel_path} (Album: {file_info['album_name']}, Article: {file_info['article_number']})")
+            logger.info(f"Sync: Added to DB - {rel_path} (Album: {file_info['album_name']}, Article: {file_info['article_number']})")
         except Exception as e:
             logger.error(f"Sync: Error adding file {rel_path} to DB: {e}")
 
@@ -269,7 +274,6 @@ def sync_db_with_filesystem():
 
     logger.info(f"Sync: Deleted {len(files_to_delete)} records, added {len(files_to_add)} records")
     return list(files_to_delete), list(files_to_add)
-
 
 # Обработка ZIP-архива
 def process_zip(zip_path):
@@ -289,7 +293,7 @@ def process_zip(zip_path):
             zip_ref.extractall(album_path)
 
             # Удаление старых записей для этого альбома из БД
-            conn = sqlite3.connect('files.db')
+            conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("DELETE FROM files WHERE album_name = ?", (album_name,))
             conn.commit()
@@ -322,15 +326,14 @@ def process_zip(zip_path):
                                     logger.info(f"Skipping non-image file: {file_path}")
                                     continue
 
-                                relative_file_path = os.path.relpath(file_path, app.config['UPLOAD_FOLDER']).replace(
-                                    os.sep, '/')
+                                relative_file_path = os.path.relpath(file_path, app.config['UPLOAD_FOLDER']).replace(os.sep, '/')
 
                                 file_name_only = os.path.basename(relative_file_path)
 
                                 encoded_path = quote(relative_file_path, safe='/')
                                 public_link = f"{base_url}/images/{encoded_path}"
 
-                                conn = sqlite3.connect('files.db')
+                                conn = get_db_connection()
                                 cursor = conn.cursor()
                                 cursor.execute(
                                     "INSERT INTO files (filename, album_name, article_number, public_link) VALUES (?, ?, ?, ?)",
@@ -344,12 +347,10 @@ def process_zip(zip_path):
         logger.error(f"Error processing ZIP file: {e}")
         return False
 
-
 # --- Routes ---
 @app.route('/')
 def index():
     return render_template('index.html', base_url=base_url)
-
 
 # Эндпоинт синхронизации БД
 @app.route('/api/sync', methods=['POST'])
@@ -365,7 +366,6 @@ def api_sync():
         logger.error(f"Error in sync endpoint: {e}")
         return jsonify({'error': f'Synchronization failed: {str(e)}'}), 500
 
-
 # Эндпоинт для принудительной очистки превью альбома
 @app.route('/api/cleanup-thumbnails/<album_name>', methods=['POST'])
 def api_cleanup_thumbnails(album_name):
@@ -376,7 +376,6 @@ def api_cleanup_thumbnails(album_name):
     except Exception as e:
         logger.error(f"Error cleaning up thumbnails for {album_name}: {e}")
         return jsonify({'error': f'Cleanup failed: {str(e)}'}), 500
-
 
 # Загрузка ZIP
 @app.route('/upload', methods=['POST'])
@@ -405,13 +404,11 @@ def upload_zip():
         else:
             return jsonify({'error': 'Failed to process ZIP file'}), 500
 
-
 # API: список всех файлов
 @app.route('/api/files')
 def api_files():
     files = get_all_files()
     return jsonify(files)
-
 
 # API: список альбомов
 @app.route('/api/albums')
@@ -419,19 +416,17 @@ def api_albums():
     albums = get_albums()
     return jsonify(albums)
 
-
 # API: список артикулов для альбома
 @app.route('/api/articles/<album_name>')
 def api_articles(album_name):
     articles = get_articles(album_name)
     return jsonify(articles)
 
-
 # API: получение файлов для конкретного альбома (и опционально артикула)
 @app.route('/api/files/<album_name>')
 @app.route('/api/files/<album_name>/<article_name>')
 def api_files_filtered(album_name, article_name=None):
-    conn = sqlite3.connect('files.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     if article_name:
@@ -449,13 +444,12 @@ def api_files_filtered(album_name, article_name=None):
     conn.close()
     return jsonify(results)
 
-
 # Новые эндпоинты для превью
 @app.route('/api/thumbnails/<album_name>')
 @app.route('/api/thumbnails/<album_name>/<article_name>')
 def api_thumbnails(album_name, article_name=None):
     """API для получения информации о файлах с превью"""
-    conn = sqlite3.connect('files.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     if article_name:
@@ -494,18 +488,15 @@ def api_thumbnails(album_name, article_name=None):
 
     return jsonify(files_data)
 
-
 @app.route('/thumbnails/small/<path:filename>')
 def serve_small_thumbnail(filename):
     """Отдает маленькие превью (120x120)"""
     return serve_thumbnail(filename, app.config['THUMBNAIL_SIZE'])
 
-
 @app.route('/thumbnails/medium/<path:filename>')
 def serve_medium_thumbnail(filename):
     """Отдает средние превью (400x400)"""
     return serve_thumbnail(filename, app.config['PREVIEW_SIZE'])
-
 
 def serve_thumbnail(filename, size):
     """Обслуживает миниатюры, создавая их при необходимости"""
@@ -529,14 +520,6 @@ def serve_thumbnail(filename, size):
     return send_from_directory(os.path.dirname(thumbnail_path),
                                os.path.basename(thumbnail_path))
 
-
-# app.py (добавить в конец файла, перед if __name__ == '__main__')
-
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill
-import json
-
-
 @app.route('/api/export-xlsx', methods=['POST'])
 def api_export_xlsx():
     """Создание XLSX документа с ссылками"""
@@ -554,7 +537,7 @@ def api_export_xlsx():
             return jsonify({'error': 'Missing required parameters'}), 400
 
         # Получаем данные из БД
-        conn = sqlite3.connect('files.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
 
         if article_name:
@@ -649,10 +632,6 @@ def api_export_xlsx():
             ws.column_dimensions[column_letter].width = adjusted_width
 
         # Сохраняем файл во временную директорию
-        import tempfile
-        import os
-        from flask import send_file
-
         with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
             wb.save(tmp_file.name)
             tmp_filename = tmp_file.name
@@ -685,7 +664,9 @@ def api_export_xlsx():
         logger.error(f"Error creating XLSX file: {e}")
         return jsonify({'error': f'Failed to create XLSX file: {str(e)}'}), 500
 
+# Инициализация базы данных при запуске приложения
+init_db()
+
 # --- Main ---
 if __name__ == '__main__':
-    init_db()
     app.run(host='0.0.0.0', port=5000, debug=True)
