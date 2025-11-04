@@ -1,4 +1,20 @@
 services:
+
+  app:
+    build: .
+    image: pichost
+    container_name: app
+    environment:
+      - DOMAIN=pichosting.mooo.com
+    volumes:
+      - ./files.db:/app/files.db
+      - ./static:/app/static
+      - ./images:/app/images
+      - ./thumbnails:/app/thumbnails
+      - ./templates:/app/templates
+      - ./gunicorn_config.py:/app/gunicorn_config.py
+    restart: always
+
   nginx:
     image: nginx:alpine
     container_name: nginx
@@ -11,16 +27,5 @@ services:
       - ./images:/app/images:rw
       - ./thumbnails:/app/thumbnails:rw
     restart: always
-
-  app:
-    build: .
-    image: pichost
-    container_name: app
     depends_on:
-      - nginx
-    environment:
-      - DOMAIN=pichosting.mooo.com
-    volumes:
-      - ./files.db:/app/files.db
-      - ./:/app
-    restart: always
+      - app
