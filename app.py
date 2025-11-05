@@ -3,7 +3,6 @@
 import os
 import zipfile
 from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
-import sqlite3
 import logging
 import re
 import unicodedata
@@ -15,6 +14,9 @@ import shutil
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 import tempfile
+import psycopg2
+from psycopg2.extras import DictCursor
+import psycopg2.pool
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'images'
@@ -35,15 +37,64 @@ logger = logging.getLogger(__name__)
 domain = os.environ.get('DOMAIN', 'pichosting.mooo.com')
 base_url = f"http://{domain}"
 
-# Полный путь к базе данных
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'files.db')
+# Конфигурация PostgreSQL
+DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/pichosting')
+
+# Пул соединений PostgreSQL
+db_pool = psycopg2.pool.SimpleConnectionPool(
+    1, 20, DATABASE_URL
+)
 
 
 def get_db_connection():
     """Создает соединение с базой данных"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        conn = db_pool.getconn()
+        return conn
+    except Exception as e:
+        logger.error(f"Error getting database connection: {e}")
+        raise
+
+
+def return_db_connection(conn):
+    """Возвращает соединение в пул"""
+    try:
+        db_pool.putconn(conn)
+    except Exception as e:
+        logger.error(f"Error returning database connection: {e}")
+
+
+def execute_query(query, params=None, fetch=False, commit=False):
+    """Универсальная функция выполнения запросов"""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=DictCursor)
+        cursor.execute(query, params)
+
+        if commit:
+            conn.commit()
+
+        if fetch:
+            if cursor.description:  # Проверяем, есть ли результаты для выборки
+                result = cursor.fetchall()
+                return [dict(row) for row in result]
+            else:
+                return []
+        else:
+            return cursor.rowcount
+
+    except Exception as e:
+        logger.error(f"Database error: {e}")
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            return_db_connection(conn)
 
 
 # --- Вспомогательные функции ---
@@ -151,59 +202,80 @@ def cleanup_file_thumbnails(filename):
         logger.error(f"Error cleaning up thumbnails for file {filename}: {e}")
 
 
-# Инициализация SQLite базы данных
 def init_db():
     """Инициализация базы данных при запуске приложения"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS files (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                filename TEXT NOT NULL,
-                album_name TEXT NOT NULL,
-                article_number TEXT NOT NULL,
-                public_link TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        conn.commit()
-        conn.close()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error(f"Error initializing database: {e}")
+    max_retries = 5
+    retry_delay = 2
+
+    for attempt in range(max_retries):
+        try:
+            # Проверяем соединение и существование таблицы
+            test_conn = get_db_connection()
+            cursor = test_conn.cursor()
+
+            # Проверяем существование таблицы
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'files'
+                );
+            """)
+            table_exists = cursor.fetchone()[0]
+
+            if not table_exists:
+                logger.warning("Table 'files' does not exist. Creating...")
+                cursor.execute('''
+                    CREATE TABLE files (
+                        id SERIAL PRIMARY KEY,
+                        filename TEXT NOT NULL,
+                        album_name TEXT NOT NULL,
+                        article_number TEXT NOT NULL,
+                        public_link TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+                test_conn.commit()
+                logger.info("Table 'files' created successfully")
+
+            cursor.close()
+            return_db_connection(test_conn)
+            logger.info("Database initialized successfully")
+            return
+
+        except Exception as e:
+            logger.warning(f"Database initialization attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                import time
+                time.sleep(retry_delay)
+            else:
+                logger.error(f"Failed to initialize database after {max_retries} attempts: {e}")
+                raise
 
 
 # Получение списка альбомов
 def get_albums():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT album_name FROM files")
-    albums = [row[0] for row in cursor.fetchall()]
-    conn.close()
-    return albums
+    results = execute_query("SELECT DISTINCT album_name FROM files", fetch=True)
+    return [album['album_name'] for album in results] if results else []
 
 
 # Получение списка артикулов для указанного альбома
 def get_articles(album_name):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT article_number FROM files WHERE album_name=?", (album_name,))
-    articles = [row[0] for row in cursor.fetchall()]
-    conn.close()
-    return articles
+    results = execute_query(
+        "SELECT DISTINCT article_number FROM files WHERE album_name = %s",
+        (album_name,),
+        fetch=True
+    )
+    return [article['article_number'] for article in results] if results else []
 
 
 # Получение всех файлов из БД
 def get_all_files():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT filename, album_name, article_number, public_link, created_at FROM files ORDER BY created_at DESC"
+    results = execute_query(
+        "SELECT filename, album_name, article_number, public_link, created_at FROM files ORDER BY created_at DESC",
+        fetch=True
     )
-    results = cursor.fetchall()
-    conn.close()
-    return results
+    return results if results else []
 
 
 # Синхронизация БД с файловой системой
@@ -213,84 +285,101 @@ def sync_db_with_filesystem():
     Удаляет из БД записи для файлов, которые больше не существуют в папке images,
     и добавляет новые файлы, которые появились в файловой системе.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=DictCursor)
 
-    # Получаем все файлы из БД
-    cursor.execute("SELECT filename, album_name, article_number, public_link FROM files")
-    db_files = {row[0]: {'album_name': row[1], 'article_number': row[2], 'public_link': row[3]} for row in
-                cursor.fetchall()}
+        # Получаем все файлы из БД
+        cursor.execute("SELECT filename, album_name, article_number, public_link FROM files")
+        db_files = {row['filename']: {
+            'album_name': row['album_name'],
+            'article_number': row['article_number'],
+            'public_link': row['public_link']
+        } for row in cursor.fetchall()}
 
-    # Сканируем файловую систему
-    fs_files = {}
-    allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.svg'}
+        # Сканируем файловую систему
+        fs_files = {}
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.svg'}
 
-    for root, dirs, files in os.walk(app.config['UPLOAD_FOLDER']):
-        for file in files:
-            _, ext = os.path.splitext(file.lower())
-            if ext in allowed_extensions:
-                full_path = os.path.join(root, file)
-                rel_path = os.path.relpath(full_path, app.config['UPLOAD_FOLDER']).replace(os.sep, '/')
+        for root, dirs, files in os.walk(app.config['UPLOAD_FOLDER']):
+            for file in files:
+                _, ext = os.path.splitext(file.lower())
+                if ext in allowed_extensions:
+                    full_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(full_path, app.config['UPLOAD_FOLDER']).replace(os.sep, '/')
 
-                # Определяем альбом и артикул из пути
-                path_parts = rel_path.split('/')
-                if len(path_parts) >= 1:
-                    album_name = path_parts[0]
+                    # Определяем альбом и артикул из пути
+                    path_parts = rel_path.split('/')
+                    if len(path_parts) >= 1:
+                        album_name = path_parts[0]
 
-                    # Если файл находится в подпапке (артикуле)
-                    if len(path_parts) >= 3:
-                        article_number = path_parts[1]
-                    else:
-                        # Если файл напрямую в альбоме, используем имя файла без расширения как артикул
-                        article_number = os.path.splitext(file)[0]
+                        # Если файл находится в подпапке (артикуле)
+                        if len(path_parts) >= 3:
+                            article_number = path_parts[1]
+                        else:
+                            # Если файл напрямую в альбоме, используем имя файла без расширения как артикул
+                            article_number = os.path.splitext(file)[0]
 
-                    # Обеспечиваем безопасные имена
-                    album_name = safe_folder_name(album_name)
-                    article_number = safe_folder_name(article_number)
+                        # Обеспечиваем безопасные имена
+                        album_name = safe_folder_name(album_name)
+                        article_number = safe_folder_name(article_number)
 
-                    encoded_path = quote(rel_path, safe='/')
-                    public_link = f"{base_url}/images/{encoded_path}"
+                        encoded_path = quote(rel_path, safe='/')
+                        public_link = f"{base_url}/images/{encoded_path}"
 
-                    fs_files[rel_path] = {
-                        'album_name': album_name,
-                        'article_number': article_number,
-                        'public_link': public_link
-                    }
+                        fs_files[rel_path] = {
+                            'album_name': album_name,
+                            'article_number': article_number,
+                            'public_link': public_link
+                        }
 
-    # Находим файлы для удаления (есть в БД, но нет в ФС)
-    files_to_delete = set(db_files.keys()) - set(fs_files.keys())
+        # Находим файлы для удаления (есть в БД, но нет в ФС)
+        files_to_delete = set(db_files.keys()) - set(fs_files.keys())
 
-    # Находим файлы для добавления (есть в ФС, но нет в БД)
-    files_to_add = set(fs_files.keys()) - set(db_files.keys())
+        # Находим файлы для добавления (есть в ФС, но нет в БД)
+        files_to_add = set(fs_files.keys()) - set(db_files.keys())
 
-    # Удаляем отсутствующие файлы из БД и их превью
-    for rel_path in files_to_delete:
-        cleanup_file_thumbnails(rel_path)
-        cursor.execute("DELETE FROM files WHERE filename = ?", (rel_path,))
-        logger.info(f"Sync: Deleted from DB - {rel_path}")
+        # Удаляем отсутствующие файлы из БД и их превью
+        for rel_path in files_to_delete:
+            cleanup_file_thumbnails(rel_path)
+            cursor.execute("DELETE FROM files WHERE filename = %s", (rel_path,))
+            logger.info(f"Sync: Deleted from DB - {rel_path}")
 
-    # Добавляем новые файлы в БД
-    for rel_path in files_to_add:
-        file_info = fs_files[rel_path]
-        try:
-            cursor.execute(
-                "INSERT INTO files (filename, album_name, article_number, public_link) VALUES (?, ?, ?, ?)",
-                (rel_path, file_info['album_name'], file_info['article_number'], file_info['public_link'])
-            )
-            logger.info(
-                f"Sync: Added to DB - {rel_path} (Album: {file_info['album_name']}, Article: {file_info['article_number']})")
-        except Exception as e:
-            logger.error(f"Sync: Error adding file {rel_path} to DB: {e}")
+        # Добавляем новые файлы в БД
+        for rel_path in files_to_add:
+            file_info = fs_files[rel_path]
+            try:
+                cursor.execute(
+                    "INSERT INTO files (filename, album_name, article_number, public_link) VALUES (%s, %s, %s, %s)",
+                    (rel_path, file_info['album_name'], file_info['article_number'], file_info['public_link'])
+                )
+                logger.info(
+                    f"Sync: Added to DB - {rel_path} (Album: {file_info['album_name']}, Article: {file_info['article_number']})")
+            except Exception as e:
+                logger.error(f"Sync: Error adding file {rel_path} to DB: {e}")
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+        logger.info(f"Sync: Deleted {len(files_to_delete)} records, added {len(files_to_add)} records")
+        return list(files_to_delete), list(files_to_add)
 
-    logger.info(f"Sync: Deleted {len(files_to_delete)} records, added {len(files_to_add)} records")
-    return list(files_to_delete), list(files_to_add)
+    except Exception as e:
+        logger.error(f"Error in sync_db_with_filesystem: {e}")
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            return_db_connection(conn)
 
 
 # Обработка ZIP-архива
 def process_zip(zip_path):
+    conn = None
+    cursor = None
     try:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_basename = os.path.basename(zip_path)
@@ -309,9 +398,8 @@ def process_zip(zip_path):
             # Удаление старых записей для этого альбома из БД
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM files WHERE album_name = ?", (album_name,))
+            cursor.execute("DELETE FROM files WHERE album_name = %s", (album_name,))
             conn.commit()
-            conn.close()
 
             allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.svg'}
 
@@ -346,20 +434,25 @@ def process_zip(zip_path):
                                 encoded_path = quote(relative_file_path, safe='/')
                                 public_link = f"{base_url}/images/{encoded_path}"
 
-                                conn = get_db_connection()
-                                cursor = conn.cursor()
+                                # Вставляем запись в БД
                                 cursor.execute(
-                                    "INSERT INTO files (filename, album_name, article_number, public_link) VALUES (?, ?, ?, ?)",
+                                    "INSERT INTO files (filename, album_name, article_number, public_link) VALUES (%s, %s, %s, %s)",
                                     (relative_file_path, album_name, article_folder_norm, public_link)
                                 )
-                                conn.commit()
-                                conn.close()
 
+            conn.commit()
             return True
+
     except Exception as e:
         logger.error(f"Error processing ZIP file: {e}")
+        if conn:
+            conn.rollback()
         return False
-
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            return_db_connection(conn)
 
 # --- Routes ---
 @app.route('/')
@@ -447,22 +540,19 @@ def api_articles(album_name):
 @app.route('/api/files/<album_name>')
 @app.route('/api/files/<album_name>/<article_name>')
 def api_files_filtered(album_name, article_name=None):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
     if article_name:
-        cursor.execute(
-            "SELECT filename, album_name, article_number, public_link, created_at FROM files WHERE album_name=? AND article_number=? ORDER BY created_at DESC",
-            (album_name, article_name)
+        results = execute_query(
+            "SELECT filename, album_name, article_number, public_link, created_at FROM files WHERE album_name = %s AND article_number = %s ORDER BY created_at DESC",
+            (album_name, article_name),
+            fetch=True
         )
     else:
-        cursor.execute(
-            "SELECT filename, album_name, article_number, public_link, created_at FROM files WHERE album_name=? ORDER BY created_at DESC",
-            (album_name,)
+        results = execute_query(
+            "SELECT filename, album_name, article_number, public_link, created_at FROM files WHERE album_name = %s ORDER BY created_at DESC",
+            (album_name,),
+            fetch=True
         )
 
-    results = cursor.fetchall()
-    conn.close()
     return jsonify(results)
 
 
@@ -471,30 +561,31 @@ def api_files_filtered(album_name, article_name=None):
 @app.route('/api/thumbnails/<album_name>/<article_name>')
 def api_thumbnails(album_name, article_name=None):
     """API для получения информации о файлах с превью"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
     if article_name:
-        cursor.execute(
+        results = execute_query(
             """SELECT filename, album_name, article_number, public_link, created_at 
-               FROM files WHERE album_name=? AND article_number=? 
+               FROM files WHERE album_name = %s AND article_number = %s 
                ORDER BY created_at DESC""",
-            (album_name, article_name)
+            (album_name, article_name),
+            fetch=True
         )
     else:
-        cursor.execute(
+        results = execute_query(
             """SELECT filename, album_name, article_number, public_link, created_at 
-               FROM files WHERE album_name=? 
+               FROM files WHERE album_name = %s 
                ORDER BY created_at DESC""",
-            (album_name,)
+            (album_name,),
+            fetch=True
         )
-
-    results = cursor.fetchall()
-    conn.close()
 
     files_data = []
     for row in results:
-        filename, album, article, public_link, created_at = row
+        filename = row['filename']
+        album = row['album_name']
+        article = row['article_number']
+        public_link = row['public_link']
+        created_at = row['created_at']
+
         original_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
         files_data.append({
@@ -563,22 +654,18 @@ def api_export_xlsx():
             return jsonify({'error': 'Missing required parameters'}), 400
 
         # Получаем данные из БД
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
         if article_name:
-            cursor.execute(
-                "SELECT filename, article_number, public_link FROM files WHERE album_name=? AND article_number=? ORDER BY article_number, filename",
-                (album_name, article_name)
+            results = execute_query(
+                "SELECT filename, article_number, public_link FROM files WHERE album_name = %s AND article_number = %s ORDER BY article_number, filename",
+                (album_name, article_name),
+                fetch=True
             )
         else:
-            cursor.execute(
-                "SELECT filename, article_number, public_link FROM files WHERE album_name=? ORDER BY article_number, filename",
-                (album_name,)
+            results = execute_query(
+                "SELECT filename, article_number, public_link FROM files WHERE album_name = %s ORDER BY article_number, filename",
+                (album_name,),
+                fetch=True
             )
-
-        results = cursor.fetchall()
-        conn.close()
 
         if not results:
             return jsonify({'error': 'No data found for export'}), 404
@@ -593,14 +680,15 @@ def api_export_xlsx():
             return 0  # Если суффикс не найден
 
         # Сортируем результаты по артикулу и числовому суффиксу в имени файла
-        sorted_results = sorted(results, key=lambda x: (x[1], extract_suffix(x[0])))
+        sorted_results = sorted(results, key=lambda x: (x['article_number'], extract_suffix(x['filename'])))
 
         # Группируем ссылки по артикулам с правильной сортировкой
         articles_data = {}
-        for filename, article, link in sorted_results:
+        for row in sorted_results:
+            article = row['article_number']
             if article not in articles_data:
                 articles_data[article] = []
-            articles_data[article].append(link)
+            articles_data[article].append(row['public_link'])
 
         # Создаем Excel файл
         wb = Workbook()
@@ -691,23 +779,24 @@ def api_export_xlsx():
         return jsonify({'error': f'Failed to create XLSX file: {str(e)}'}), 500
 
 
-# app.py - добавьте эти эндпоинты после существующих
-
 @app.route('/api/delete-album/<album_name>', methods=['DELETE'])
 def api_delete_album(album_name):
     """Удаление альбома из БД и файловой системы"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
         # Получаем все файлы альбома
-        cursor.execute("SELECT filename FROM files WHERE album_name=?", (album_name,))
-        files = [row[0] for row in cursor.fetchall()]
+        files = execute_query(
+            "SELECT filename FROM files WHERE album_name = %s",
+            (album_name,),
+            fetch=True
+        )
+        filenames = [file['filename'] for file in files]
 
         # Удаляем записи из БД
-        cursor.execute("DELETE FROM files WHERE album_name=?", (album_name,))
-        conn.commit()
-        conn.close()
+        execute_query(
+            "DELETE FROM files WHERE album_name = %s",
+            (album_name,),
+            commit=True
+        )
 
         # Удаляем файлы и папки
         album_path = os.path.join(app.config['UPLOAD_FOLDER'], album_name)
@@ -737,19 +826,20 @@ def api_delete_album(album_name):
 def api_delete_article(album_name, article_name):
     """Удаление артикула из БД и файловой системы"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
         # Получаем все файлы артикула
-        cursor.execute("SELECT filename FROM files WHERE album_name=? AND article_number=?",
-                       (album_name, article_name))
-        files = [row[0] for row in cursor.fetchall()]
+        files = execute_query(
+            "SELECT filename FROM files WHERE album_name = %s AND article_number = %s",
+            (album_name, article_name),
+            fetch=True
+        )
+        filenames = [file['filename'] for file in files]
 
         # Удаляем записи из БД
-        cursor.execute("DELETE FROM files WHERE album_name=? AND article_number=?",
-                       (album_name, article_name))
-        conn.commit()
-        conn.close()
+        execute_query(
+            "DELETE FROM files WHERE album_name = %s AND article_number = %s",
+            (album_name, article_name),
+            commit=True
+        )
 
         # Удаляем файлы и папки
         article_path = os.path.join(app.config['UPLOAD_FOLDER'], album_name, article_name)
@@ -760,7 +850,7 @@ def api_delete_article(album_name, article_name):
             logger.info(f"Deleted article directory: {article_path}")
 
         # Удаляем превью для каждого файла
-        for filename in files:
+        for filename in filenames:
             cleanup_file_thumbnails(filename)
 
         # Удаляем папку превью артикула если осталась
@@ -785,3 +875,4 @@ init_db()
 # --- Main ---
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+

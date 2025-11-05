@@ -4,3 +4,4 @@ images
 __pycache__
 files.db
 thumbnails
+postgres_data

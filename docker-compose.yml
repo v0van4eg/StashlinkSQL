@@ -6,14 +6,19 @@ services:
     container_name: app
     environment:
       - DOMAIN=pichosting.mooo.com
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/pichosting
+      - POSTGRES_DB=pichosting
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
     volumes:
-      - ./files.db:/app/files.db
       - ./static:/app/static
       - ./images:/app/images
       - ./thumbnails:/app/thumbnails
       - ./templates:/app/templates
       - ./gunicorn_config.py:/app/gunicorn_config.py
     restart: always
+    depends_on:
+      - postgres
 
   nginx:
     image: nginx:alpine
@@ -29,3 +34,20 @@ services:
     restart: always
     depends_on:
       - app
+
+  postgres:
+    image: postgres:13-alpine
+    container_name: postgres
+    environment:
+      - POSTGRES_DB=pichosting
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    restart: always
+
+volumes:
+  postgres_data:

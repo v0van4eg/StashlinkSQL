@@ -2,3 +2,4 @@ flask
 pillow
 openpyxl
 gunicorn
+psycopg2

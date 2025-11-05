@@ -2,6 +2,11 @@ FROM python:slim
 
 WORKDIR /app
 
+# Установка зависимостей для PostgreSQL
+RUN apt-get update && apt-get install -y \
+    libpq-dev gcc && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 
 RUN pip install --upgrade pip && pip install -r requirements.txt
@@ -10,13 +15,8 @@ COPY static templates app.py gunicorn_config.py /app/
 
 RUN mkdir /app/thumbnails /app/images
 
-# Создаем базу данных при сборке
-RUN python -c "from app import init_db; init_db()"
-
-RUN chmod 666 files.db
+# PostgreSQL будет инициализироваться через init.sql
 
 EXPOSE 5000
-
-#CMD ["python", "app.py"]
 
 CMD ["gunicorn", "--config", "gunicorn_config.py", "app:app"]
