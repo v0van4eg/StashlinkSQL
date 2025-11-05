@@ -11,11 +11,9 @@ COPY requirements.txt .
 
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-COPY static templates app.py gunicorn_config.py /app/
+COPY static templates app.py gunicorn_config.py database.py /app/
 
 RUN mkdir /app/thumbnails /app/images
-
-# PostgreSQL будет инициализироваться через init.sql
 
 EXPOSE 5000
 

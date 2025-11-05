@@ -14,9 +14,9 @@ import shutil
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 import tempfile
-import psycopg2
-from psycopg2.extras import DictCursor
-import psycopg2.pool
+import atexit
+
+from database import db_manager
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'images'
@@ -36,65 +36,6 @@ logger = logging.getLogger(__name__)
 # Конфигурация домена и базового URL получаем из переменных окружения
 domain = os.environ.get('DOMAIN', 'pichosting.mooo.com')
 base_url = f"http://{domain}"
-
-# Конфигурация PostgreSQL
-DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/pichosting')
-
-# Пул соединений PostgreSQL
-db_pool = psycopg2.pool.SimpleConnectionPool(
-    1, 20, DATABASE_URL
-)
-
-
-def get_db_connection():
-    """Создает соединение с базой данных"""
-    try:
-        conn = db_pool.getconn()
-        return conn
-    except Exception as e:
-        logger.error(f"Error getting database connection: {e}")
-        raise
-
-
-def return_db_connection(conn):
-    """Возвращает соединение в пул"""
-    try:
-        db_pool.putconn(conn)
-    except Exception as e:
-        logger.error(f"Error returning database connection: {e}")
-
-
-def execute_query(query, params=None, fetch=False, commit=False):
-    """Универсальная функция выполнения запросов"""
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=DictCursor)
-        cursor.execute(query, params)
-
-        if commit:
-            conn.commit()
-
-        if fetch:
-            if cursor.description:  # Проверяем, есть ли результаты для выборки
-                result = cursor.fetchall()
-                return [dict(row) for row in result]
-            else:
-                return []
-        else:
-            return cursor.rowcount
-
-    except Exception as e:
-        logger.error(f"Database error: {e}")
-        if conn:
-            conn.rollback()
-        raise
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            return_db_connection(conn)
 
 
 # --- Вспомогательные функции ---
@@ -202,6 +143,7 @@ def cleanup_file_thumbnails(filename):
         logger.error(f"Error cleaning up thumbnails for file {filename}: {e}")
 
 
+# Инициализация базы данных
 def init_db():
     """Инициализация базы данных при запуске приложения"""
     max_retries = 5
@@ -210,21 +152,18 @@ def init_db():
     for attempt in range(max_retries):
         try:
             # Проверяем соединение и существование таблицы
-            test_conn = get_db_connection()
-            cursor = test_conn.cursor()
-
-            # Проверяем существование таблицы
-            cursor.execute("""
+            result = db_manager.execute_query("""
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
                     WHERE table_name = 'files'
                 );
-            """)
-            table_exists = cursor.fetchone()[0]
+            """, fetch=True)
+
+            table_exists = result[0]['exists'] if result else False
 
             if not table_exists:
                 logger.warning("Table 'files' does not exist. Creating...")
-                cursor.execute('''
+                db_manager.execute_query('''
                     CREATE TABLE files (
                         id SERIAL PRIMARY KEY,
                         filename TEXT NOT NULL,
@@ -233,19 +172,21 @@ def init_db():
                         public_link TEXT NOT NULL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
-                ''')
-                test_conn.commit()
+                ''', commit=True)
+
+                # Создаем индексы
+                db_manager.execute_query('CREATE INDEX idx_files_album_name ON files(album_name)', commit=True)
+                db_manager.execute_query('CREATE INDEX idx_files_article_number ON files(article_number)', commit=True)
+                db_manager.execute_query('CREATE INDEX idx_files_created_at ON files(created_at)', commit=True)
+
                 logger.info("Table 'files' created successfully")
 
-            cursor.close()
-            return_db_connection(test_conn)
             logger.info("Database initialized successfully")
             return
 
         except Exception as e:
             logger.warning(f"Database initialization attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
-                logger.info(f"Retrying in {retry_delay} seconds...")
                 import time
                 time.sleep(retry_delay)
             else:
@@ -255,13 +196,13 @@ def init_db():
 
 # Получение списка альбомов
 def get_albums():
-    results = execute_query("SELECT DISTINCT album_name FROM files", fetch=True)
+    results = db_manager.execute_query("SELECT DISTINCT album_name FROM files", fetch=True)
     return [album['album_name'] for album in results] if results else []
 
 
 # Получение списка артикулов для указанного альбома
 def get_articles(album_name):
-    results = execute_query(
+    results = db_manager.execute_query(
         "SELECT DISTINCT article_number FROM files WHERE album_name = %s",
         (album_name,),
         fetch=True
@@ -271,7 +212,7 @@ def get_articles(album_name):
 
 # Получение всех файлов из БД
 def get_all_files():
-    results = execute_query(
+    results = db_manager.execute_query(
         "SELECT filename, album_name, article_number, public_link, created_at FROM files ORDER BY created_at DESC",
         fetch=True
     )
@@ -285,19 +226,17 @@ def sync_db_with_filesystem():
     Удаляет из БД записи для файлов, которые больше не существуют в папке images,
     и добавляет новые файлы, которые появились в файловой системе.
     """
-    conn = None
-    cursor = None
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=DictCursor)
-
         # Получаем все файлы из БД
-        cursor.execute("SELECT filename, album_name, article_number, public_link FROM files")
+        db_files_result = db_manager.execute_query(
+            "SELECT filename, album_name, article_number, public_link FROM files",
+            fetch=True
+        )
         db_files = {row['filename']: {
             'album_name': row['album_name'],
             'article_number': row['article_number'],
             'public_link': row['public_link']
-        } for row in cursor.fetchall()}
+        } for row in db_files_result} if db_files_result else {}
 
         # Сканируем файловую систему
         fs_files = {}
@@ -344,42 +283,33 @@ def sync_db_with_filesystem():
         # Удаляем отсутствующие файлы из БД и их превью
         for rel_path in files_to_delete:
             cleanup_file_thumbnails(rel_path)
-            cursor.execute("DELETE FROM files WHERE filename = %s", (rel_path,))
+            db_manager.execute_query("DELETE FROM files WHERE filename = %s", (rel_path,), commit=True)
             logger.info(f"Sync: Deleted from DB - {rel_path}")
 
         # Добавляем новые файлы в БД
         for rel_path in files_to_add:
             file_info = fs_files[rel_path]
             try:
-                cursor.execute(
+                db_manager.execute_query(
                     "INSERT INTO files (filename, album_name, article_number, public_link) VALUES (%s, %s, %s, %s)",
-                    (rel_path, file_info['album_name'], file_info['article_number'], file_info['public_link'])
+                    (rel_path, file_info['album_name'], file_info['article_number'], file_info['public_link']),
+                    commit=True
                 )
                 logger.info(
                     f"Sync: Added to DB - {rel_path} (Album: {file_info['album_name']}, Article: {file_info['article_number']})")
             except Exception as e:
                 logger.error(f"Sync: Error adding file {rel_path} to DB: {e}")
 
-        conn.commit()
         logger.info(f"Sync: Deleted {len(files_to_delete)} records, added {len(files_to_add)} records")
         return list(files_to_delete), list(files_to_add)
 
     except Exception as e:
         logger.error(f"Error in sync_db_with_filesystem: {e}")
-        if conn:
-            conn.rollback()
         raise
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            return_db_connection(conn)
 
 
 # Обработка ZIP-архива
 def process_zip(zip_path):
-    conn = None
-    cursor = None
     try:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_basename = os.path.basename(zip_path)
@@ -396,10 +326,7 @@ def process_zip(zip_path):
             zip_ref.extractall(album_path)
 
             # Удаление старых записей для этого альбома из БД
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM files WHERE album_name = %s", (album_name,))
-            conn.commit()
+            db_manager.execute_query("DELETE FROM files WHERE album_name = %s", (album_name,), commit=True)
 
             allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.svg'}
 
@@ -435,24 +362,18 @@ def process_zip(zip_path):
                                 public_link = f"{base_url}/images/{encoded_path}"
 
                                 # Вставляем запись в БД
-                                cursor.execute(
+                                db_manager.execute_query(
                                     "INSERT INTO files (filename, album_name, article_number, public_link) VALUES (%s, %s, %s, %s)",
-                                    (relative_file_path, album_name, article_folder_norm, public_link)
+                                    (relative_file_path, album_name, article_folder_norm, public_link),
+                                    commit=True
                                 )
 
-            conn.commit()
             return True
 
     except Exception as e:
         logger.error(f"Error processing ZIP file: {e}")
-        if conn:
-            conn.rollback()
         return False
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            return_db_connection(conn)
+
 
 # --- Routes ---
 @app.route('/')
@@ -541,19 +462,19 @@ def api_articles(album_name):
 @app.route('/api/files/<album_name>/<article_name>')
 def api_files_filtered(album_name, article_name=None):
     if article_name:
-        results = execute_query(
+        results = db_manager.execute_query(
             "SELECT filename, album_name, article_number, public_link, created_at FROM files WHERE album_name = %s AND article_number = %s ORDER BY created_at DESC",
             (album_name, article_name),
             fetch=True
         )
     else:
-        results = execute_query(
+        results = db_manager.execute_query(
             "SELECT filename, album_name, article_number, public_link, created_at FROM files WHERE album_name = %s ORDER BY created_at DESC",
             (album_name,),
             fetch=True
         )
 
-    return jsonify(results)
+    return jsonify(results if results else [])
 
 
 # Новые эндпоинты для превью
@@ -561,45 +482,51 @@ def api_files_filtered(album_name, article_name=None):
 @app.route('/api/thumbnails/<album_name>/<article_name>')
 def api_thumbnails(album_name, article_name=None):
     """API для получения информации о файлах с превью"""
-    if article_name:
-        results = execute_query(
-            """SELECT filename, album_name, article_number, public_link, created_at 
-               FROM files WHERE album_name = %s AND article_number = %s 
-               ORDER BY created_at DESC""",
-            (album_name, article_name),
-            fetch=True
-        )
-    else:
-        results = execute_query(
-            """SELECT filename, album_name, article_number, public_link, created_at 
-               FROM files WHERE album_name = %s 
-               ORDER BY created_at DESC""",
-            (album_name,),
-            fetch=True
-        )
+    try:
+        if article_name:
+            results = db_manager.execute_query(
+                """SELECT filename, album_name, article_number, public_link, created_at 
+                   FROM files WHERE album_name = %s AND article_number = %s 
+                   ORDER BY created_at DESC""",
+                (album_name, article_name),
+                fetch=True
+            )
+        else:
+            results = db_manager.execute_query(
+                """SELECT filename, album_name, article_number, public_link, created_at 
+                   FROM files WHERE album_name = %s 
+                   ORDER BY created_at DESC""",
+                (album_name,),
+                fetch=True
+            )
 
-    files_data = []
-    for row in results:
-        filename = row['filename']
-        album = row['album_name']
-        article = row['article_number']
-        public_link = row['public_link']
-        created_at = row['created_at']
+        files_data = []
+        if results:
+            for row in results:
+                filename = row['filename']
+                album = row['album_name']
+                article = row['article_number']
+                public_link = row['public_link']
+                created_at = row['created_at']
 
-        original_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                original_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
-        files_data.append({
-            'filename': filename,
-            'album_name': album,
-            'article_number': article,
-            'public_link': public_link,
-            'created_at': created_at,
-            'thumbnail_url': f"/thumbnails/small/{filename}",
-            'preview_url': f"/thumbnails/medium/{filename}",
-            'file_size': os.path.getsize(original_path) if os.path.exists(original_path) else 0
-        })
+                files_data.append({
+                    'filename': filename,
+                    'album_name': album,
+                    'article_number': article,
+                    'public_link': public_link,
+                    'created_at': created_at,
+                    'thumbnail_url': f"/thumbnails/small/{filename}",
+                    'preview_url': f"/thumbnails/medium/{filename}",
+                    'file_size': os.path.getsize(original_path) if os.path.exists(original_path) else 0
+                })
 
-    return jsonify(files_data)
+        return jsonify(files_data)
+
+    except Exception as e:
+        logger.error(f"Error in api_thumbnails: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/thumbnails/small/<path:filename>')
@@ -655,13 +582,13 @@ def api_export_xlsx():
 
         # Получаем данные из БД
         if article_name:
-            results = execute_query(
+            results = db_manager.execute_query(
                 "SELECT filename, article_number, public_link FROM files WHERE album_name = %s AND article_number = %s ORDER BY article_number, filename",
                 (album_name, article_name),
                 fetch=True
             )
         else:
-            results = execute_query(
+            results = db_manager.execute_query(
                 "SELECT filename, article_number, public_link FROM files WHERE album_name = %s ORDER BY article_number, filename",
                 (album_name,),
                 fetch=True
@@ -784,15 +711,15 @@ def api_delete_album(album_name):
     """Удаление альбома из БД и файловой системы"""
     try:
         # Получаем все файлы альбома
-        files = execute_query(
+        files = db_manager.execute_query(
             "SELECT filename FROM files WHERE album_name = %s",
             (album_name,),
             fetch=True
         )
-        filenames = [file['filename'] for file in files]
+        filenames = [file['filename'] for file in files] if files else []
 
         # Удаляем записи из БД
-        execute_query(
+        db_manager.execute_query(
             "DELETE FROM files WHERE album_name = %s",
             (album_name,),
             commit=True
@@ -827,15 +754,15 @@ def api_delete_article(album_name, article_name):
     """Удаление артикула из БД и файловой системы"""
     try:
         # Получаем все файлы артикула
-        files = execute_query(
+        files = db_manager.execute_query(
             "SELECT filename FROM files WHERE album_name = %s AND article_number = %s",
             (album_name, article_name),
             fetch=True
         )
-        filenames = [file['filename'] for file in files]
+        filenames = [file['filename'] for file in files] if files else []
 
         # Удаляем записи из БД
-        execute_query(
+        db_manager.execute_query(
             "DELETE FROM files WHERE album_name = %s AND article_number = %s",
             (album_name, article_name),
             commit=True
@@ -872,7 +799,13 @@ def api_delete_article(album_name, article_name):
 # Инициализация базы данных при запуске приложения
 init_db()
 
+
+# Функция для закрытия соединений при выходе
+@atexit.register
+def cleanup():
+    db_manager.close()
+
+
 # --- Main ---
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
-
