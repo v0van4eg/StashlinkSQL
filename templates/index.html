@@ -110,6 +110,7 @@
             transition: background 0.2s;
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 8px;
         }
         .btn:hover {
@@ -179,7 +180,7 @@
             border-bottom: none;
         }
         .article-header {
-            background-color: #0cb;
+            background-color: #e9ecef;
             padding: 10px 15px;
             margin: 10px 0 5px 0;
             font-weight: bold;
@@ -277,6 +278,8 @@
         }
         .manage-card-content {
             flex: 1;
+            display: flex;
+            flex-direction: column;
         }
 
         /* Стили для кнопки создания XLSX */
@@ -579,6 +582,46 @@
             }
         }
 
+        /* Стили для кнопок удаления */
+        .delete-buttons-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-height: 44px;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger:disabled {
+            background: #adb5bd;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Скрываем кнопки по умолчанию */
+        #deleteAlbumBtn,
+        #deleteArticleBtn {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -611,7 +654,7 @@
                         <span>Управление ссылками</span>
                     </button>
                 </div>
-                <!-- Новая пустая карточка с селекторами -->
+                <!-- Карточка управления ссылками -->
                 <div id="manageCard" style="display: none;">
                     <h2>Управление ссылками</h2>
                     <div class="manage-card-content">
@@ -627,6 +670,12 @@
                                 <option value="">-- Сначала выберите альбом --</option>
                             </select>
                         </div>
+
+                        <!-- Контейнер для кнопок удаления -->
+                        <div id="deleteButtonsContainer" class="delete-buttons-container">
+                            <!-- Кнопки будут созданы динамически -->
+                        </div>
+
                         <div class="selector-group">
                             <button class="btn" id="createXlsxBtn" disabled>
                                 <span>📊 Создать документ XLSX</span>

@@ -691,6 +691,94 @@ def api_export_xlsx():
         return jsonify({'error': f'Failed to create XLSX file: {str(e)}'}), 500
 
 
+# app.py - добавьте эти эндпоинты после существующих
+
+@app.route('/api/delete-album/<album_name>', methods=['DELETE'])
+def api_delete_album(album_name):
+    """Удаление альбома из БД и файловой системы"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Получаем все файлы альбома
+        cursor.execute("SELECT filename FROM files WHERE album_name=?", (album_name,))
+        files = [row[0] for row in cursor.fetchall()]
+
+        # Удаляем записи из БД
+        cursor.execute("DELETE FROM files WHERE album_name=?", (album_name,))
+        conn.commit()
+        conn.close()
+
+        # Удаляем файлы и папки
+        album_path = os.path.join(app.config['UPLOAD_FOLDER'], album_name)
+        thumbnail_album_path = os.path.join(app.config['THUMBNAIL_FOLDER'], album_name)
+
+        # Удаляем файлы изображений
+        if os.path.exists(album_path):
+            shutil.rmtree(album_path)
+            logger.info(f"Deleted album directory: {album_path}")
+
+        # Удаляем превью альбома
+        cleanup_album_thumbnails(album_name)
+
+        # Удаляем папку превью если осталась
+        if os.path.exists(thumbnail_album_path):
+            shutil.rmtree(thumbnail_album_path)
+            logger.info(f"Deleted album thumbnails directory: {thumbnail_album_path}")
+
+        return jsonify({'message': f'Альбом "{album_name}" успешно удален'})
+
+    except Exception as e:
+        logger.error(f"Error deleting album {album_name}: {e}")
+        return jsonify({'error': f'Ошибка удаления альбома: {str(e)}'}), 500
+
+
+@app.route('/api/delete-article/<album_name>/<article_name>', methods=['DELETE'])
+def api_delete_article(album_name, article_name):
+    """Удаление артикула из БД и файловой системы"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Получаем все файлы артикула
+        cursor.execute("SELECT filename FROM files WHERE album_name=? AND article_number=?",
+                       (album_name, article_name))
+        files = [row[0] for row in cursor.fetchall()]
+
+        # Удаляем записи из БД
+        cursor.execute("DELETE FROM files WHERE album_name=? AND article_number=?",
+                       (album_name, article_name))
+        conn.commit()
+        conn.close()
+
+        # Удаляем файлы и папки
+        article_path = os.path.join(app.config['UPLOAD_FOLDER'], album_name, article_name)
+
+        # Удаляем файлы изображений
+        if os.path.exists(article_path):
+            shutil.rmtree(article_path)
+            logger.info(f"Deleted article directory: {article_path}")
+
+        # Удаляем превью для каждого файла
+        for filename in files:
+            cleanup_file_thumbnails(filename)
+
+        # Удаляем папку превью артикула если осталась
+        thumbnail_article_path = os.path.join(app.config['THUMBNAIL_FOLDER'], album_name, article_name)
+        if os.path.exists(thumbnail_article_path):
+            shutil.rmtree(thumbnail_article_path)
+            logger.info(f"Deleted article thumbnails directory: {thumbnail_article_path}")
+
+        # Синхронизируем БД после удаления
+        sync_db_with_filesystem()
+
+        return jsonify({'message': f'Артикул "{article_name}" в альбоме "{album_name}" успешно удален'})
+
+    except Exception as e:
+        logger.error(f"Error deleting article {article_name} from album {album_name}: {e}")
+        return jsonify({'error': f'Ошибка удаления артикула: {str(e)}'}), 500
+
+
 # Инициализация базы данных при запуске приложения
 init_db()
 

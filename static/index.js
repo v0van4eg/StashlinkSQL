@@ -18,6 +18,8 @@ let manageBtn, uploadCard, manageCard, backToUploadBtn;
 let albumSelector, articleSelector;
 // Элементы для XLSX
 let createXlsxBtn, xlsxModal, xlsxTemplateSelect, separatorSelect, generateXlsxBtn, cancelXlsxBtn;
+// Элементы для удаления
+let deleteAlbumBtn, deleteArticleBtn;
 
 // Конфигурация превью
 const PREVIEW_CONFIG = {
@@ -117,6 +119,10 @@ function initializeElements() {
     separatorSelect = document.getElementById('separatorSelect');
     generateXlsxBtn = document.getElementById('generateXlsxBtn');
     cancelXlsxBtn = document.getElementById('cancelXlsxBtn');
+
+    // Элементы для удаления
+    deleteAlbumBtn = document.getElementById('deleteAlbumBtn');
+    deleteArticleBtn = document.getElementById('deleteArticleBtn');
 
     if (!dropArea || !zipFileInput || !browseBtn || !uploadBtn || !uploadForm || !linkList || !currentAlbumTitle ||
         !manageBtn || !backToUploadBtn || !uploadCard || !manageCard || !progressContainer || !progressBar || !progressText ||
@@ -218,10 +224,14 @@ async function loadAlbums() {
             albumSelector.appendChild(option);
         });
 
+        // Обновляем состояние кнопок после загрузки альбомов
+        updateDeleteButtonsState();
+
         return albums;
     } catch (error) {
         console.error('Error loading albums:', error);
         albumSelector.innerHTML = '<option value="">-- Ошибка загрузки --</option>';
+        updateDeleteButtonsState();
         return [];
     }
 }
@@ -230,6 +240,7 @@ async function loadArticles(albumName) {
     if (!albumName) {
         articleSelector.innerHTML = '<option value="">-- Сначала выберите альбом --</option>';
         articleSelector.disabled = true;
+        updateDeleteButtonsState();
         return;
     }
 
@@ -247,11 +258,13 @@ async function loadArticles(albumName) {
         });
 
         articleSelector.disabled = false;
+        updateDeleteButtonsState();
         return articles;
     } catch (error) {
         console.error('Error loading articles:', error);
         articleSelector.innerHTML = '<option value="">-- Ошибка загрузки --</option>';
         articleSelector.disabled = false;
+        updateDeleteButtonsState();
         return [];
     }
 }
@@ -480,6 +493,142 @@ async function showFilesForAlbum(albumName, articleName = '') {
     }
 }
 
+// --- Функции для удаления ---
+async function deleteAlbum(albumName) {
+    if (!albumName || !confirm(`Вы уверены, что хотите удалить альбом "${albumName}"? Это действие нельзя отменить.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/delete-album/${encodeURIComponent(albumName)}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Ошибка при удалении альбома');
+        }
+
+        const result = await response.json();
+        alert(result.message);
+
+        // Обновляем интерфейс
+        await loadAlbums();
+        clearLinkList();
+        updateDeleteButtonsState();
+
+    } catch (error) {
+        console.error('Error deleting album:', error);
+        alert(`Ошибка удаления альбома: ${error.message}`);
+    }
+}
+
+async function deleteArticle(albumName, articleName) {
+    if (!albumName || !articleName || !confirm(`Вы уверены, что хотите удалить артикул "${articleName}" из альбома "${albumName}"? Это действие нельзя отменить.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/delete-article/${encodeURIComponent(albumName)}/${encodeURIComponent(articleName)}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Ошибка при удалении артикула');
+        }
+
+        const result = await response.json();
+        alert(result.message);
+
+        // Обновляем интерфейс
+        await loadArticles(albumName);
+        clearLinkList();
+        updateDeleteButtonsState();
+
+        // Если удалили текущий артикул, показываем весь альбом
+        if (articleSelector.value === articleName) {
+            articleSelector.value = '';
+            showFilesForAlbum(albumName);
+        }
+
+    } catch (error) {
+        console.error('Error deleting article:', error);
+        alert(`Ошибка удаления артикула: ${error.message}`);
+    }
+}
+
+// --- Обновление состояния кнопок удаления ---
+function updateDeleteButtonsState() {
+    const selectedAlbum = albumSelector.value;
+    const selectedArticle = articleSelector.value;
+
+    if (deleteAlbumBtn) {
+        deleteAlbumBtn.disabled = !selectedAlbum;
+        // Показываем/скрываем кнопку в зависимости от выбора альбома
+        deleteAlbumBtn.style.display = selectedAlbum ? 'flex' : 'none';
+    }
+
+    if (deleteArticleBtn) {
+        deleteArticleBtn.disabled = !selectedAlbum || !selectedArticle;
+        // Показываем/скрываем кнопку в зависимости от выбора артикула
+        deleteArticleBtn.style.display = (selectedAlbum && selectedArticle) ? 'flex' : 'none';
+    }
+}
+
+// --- Инициализация кнопок удаления ---
+function initDeleteButtons() {
+    // Создаем кнопки если их нет
+    let deleteButtonsContainer = document.getElementById('deleteButtonsContainer');
+    if (!deleteButtonsContainer) {
+        deleteButtonsContainer = document.createElement('div');
+        deleteButtonsContainer.id = 'deleteButtonsContainer';
+        deleteButtonsContainer.className = 'delete-buttons-container';
+
+        // Находим контейнер для кнопок (после селекторов)
+        const manageCardContent = document.querySelector('.manage-card-content');
+        if (manageCardContent) {
+            // Вставляем контейнер после селекторов, но перед кнопкой XLSX
+            const selectorGroups = manageCardContent.querySelectorAll('.selector-group');
+            const lastSelectorGroup = selectorGroups[selectorGroups.length - 1];
+
+            if (lastSelectorGroup && lastSelectorGroup.nextSibling) {
+                manageCardContent.insertBefore(deleteButtonsContainer, lastSelectorGroup.nextSibling);
+            } else {
+                manageCardContent.appendChild(deleteButtonsContainer);
+            }
+        }
+    }
+
+    // Создаем кнопку удаления альбома если ее нет
+    if (!deleteAlbumBtn) {
+        deleteAlbumBtn = document.createElement('button');
+        deleteAlbumBtn.id = 'deleteAlbumBtn';
+        deleteAlbumBtn.className = 'btn btn-danger';
+        deleteAlbumBtn.innerHTML = '🗑️ Удалить альбом';
+        deleteAlbumBtn.disabled = true;
+        deleteAlbumBtn.addEventListener('click', () => {
+            deleteAlbum(albumSelector.value);
+        });
+        deleteButtonsContainer.appendChild(deleteAlbumBtn);
+    }
+
+    // Создаем кнопку удаления артикула если ее нет
+    if (!deleteArticleBtn) {
+        deleteArticleBtn = document.createElement('button');
+        deleteArticleBtn.id = 'deleteArticleBtn';
+        deleteArticleBtn.className = 'btn btn-danger';
+        deleteArticleBtn.innerHTML = '🗑️ Удалить артикул';
+        deleteArticleBtn.disabled = true;
+        deleteArticleBtn.addEventListener('click', () => {
+            deleteArticle(albumSelector.value, articleSelector.value);
+        });
+        deleteButtonsContainer.appendChild(deleteArticleBtn);
+    }
+
+    updateDeleteButtonsState();
+}
+
 // --- Функции для работы с XLSX ---
 function initXlsxModal() {
     if (!createXlsxBtn || !xlsxModal) return;
@@ -666,6 +815,7 @@ document.addEventListener('DOMContentLoaded', function() {
         loadArticles(selectedAlbum);
         clearLinkList();
         updateCreateXlsxButtonState();
+        updateDeleteButtonsState();
 
         if (selectedAlbum) {
             showFilesForAlbum(selectedAlbum);
@@ -675,6 +825,7 @@ document.addEventListener('DOMContentLoaded', function() {
     articleSelector.addEventListener('change', function() {
         const selectedAlbum = albumSelector.value;
         const selectedArticle = this.value;
+        updateDeleteButtonsState();
 
         if (selectedAlbum) {
             showFilesForAlbum(selectedAlbum, selectedArticle);
@@ -788,5 +939,7 @@ document.addEventListener('DOMContentLoaded', function() {
     updateUI();
     clearLinkList();
     initXlsxModal();
+    initDeleteButtons();
     updateCreateXlsxButtonState();
+    updateDeleteButtonsState();
 });
