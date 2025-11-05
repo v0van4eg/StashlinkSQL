@@ -13,7 +13,7 @@ let droppedFile = null;
 let currentAlbumName = null;
 // DOM elements
 let dropArea, zipFileInput, browseBtn, uploadBtn, uploadForm, linkList, currentAlbumTitle, progressContainer, progressBar, progressText;
-let manageBtn, uploadCard, emptyCard, backToUploadBtn;
+let manageBtn, uploadCard, manageCard, backToUploadBtn;
 // Новые элементы для селекторов
 let albumSelector, articleSelector;
 // Элементы для XLSX
@@ -100,7 +100,7 @@ function initializeElements() {
     currentAlbumTitle = document.getElementById('currentAlbumTitle');
     manageBtn = document.getElementById('manageBtn');
     uploadCard = document.getElementById('uploadCard');
-    emptyCard = document.getElementById('emptyCard');
+    manageCard = document.getElementById('manageCard');
     backToUploadBtn = document.getElementById('backToUploadBtn');
     progressContainer = document.getElementById('progressContainer');
     progressBar = document.getElementById('progressBar');
@@ -119,7 +119,7 @@ function initializeElements() {
     cancelXlsxBtn = document.getElementById('cancelXlsxBtn');
 
     if (!dropArea || !zipFileInput || !browseBtn || !uploadBtn || !uploadForm || !linkList || !currentAlbumTitle ||
-        !manageBtn || !backToUploadBtn || !uploadCard || !emptyCard || !progressContainer || !progressBar || !progressText ||
+        !manageBtn || !backToUploadBtn || !uploadCard || !manageCard || !progressContainer || !progressBar || !progressText ||
         !albumSelector || !articleSelector || !createXlsxBtn || !xlsxModal || !xlsxTemplateSelect || !separatorSelect ||
         !generateXlsxBtn || !cancelXlsxBtn) {
         console.error('One or more required DOM elements not found!');
@@ -755,11 +755,11 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // --- Обработчик для кнопки "Управление ссылками" ---
-    if (manageBtn && uploadCard && emptyCard) {
+    if (manageBtn && uploadCard && manageCard) {
         manageBtn.addEventListener('click', function() {
             console.log("Кнопка 'Управление ссылками' нажата");
             uploadCard.style.display = 'none';
-            emptyCard.style.display = 'flex';
+            manageCard.style.display = 'flex';
 
             // Очищаем правую карточку
             clearLinkList();
@@ -772,11 +772,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // --- Обработчик для кнопки "Назад к загрузке" ---
-    if (backToUploadBtn && uploadCard && emptyCard) {
+    if (backToUploadBtn && uploadCard && manageCard) {
         backToUploadBtn.addEventListener('click', function() {
             console.log("Кнопка 'Назад к загрузке' нажата");
             uploadCard.style.display = 'flex';
-            emptyCard.style.display = 'none';
+            manageCard.style.display = 'none';
             clearLinkList();
             currentAlbumTitle.textContent = 'Прямые ссылки на изображения';
         });
