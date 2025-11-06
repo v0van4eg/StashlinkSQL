@@ -1,7 +1,6 @@
 # app.py
 
-from auth_system import AuthManager, login_required, role_required, auth_context_processor
-from auth_system import is_authenticated
+from auth_system import AuthManager, login_required, role_required, auth_context_processor, is_authenticated
 import os
 import zipfile
 from flask import Flask, request, session, jsonify, render_template, send_from_directory, send_file
@@ -398,6 +397,9 @@ def index():
     else:
         return render_template('hello.html')
 
+@app.route('/hello')
+def hello():
+    return render_template('hello.html', base_url=base_url)
 
 # Эндпоинт синхронизации БД
 @app.route('/api/sync', methods=['GET'])
@@ -885,11 +887,6 @@ def admin_panel():
     </body>
     </html>
     '''
-
-
-@app.route('/hello')
-def hello():
-    return render_template('hello.html', base_url=base_url)
 
 
 
