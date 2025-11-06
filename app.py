@@ -20,7 +20,10 @@ import atexit
 from database import db_manager
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'default_secret_key')
+# Сгенерировать ключ
+app.secret_key = os.urandom(24)
+
+# app.secret_key = os.environ.get('SECRET_KEY', 'default_secret_key')
 # Инициализация аутентификации (теперь параметры берутся из переменных окружения)
 auth_manager = AuthManager()
 auth_manager.init_app(app)
@@ -739,6 +742,7 @@ def api_export_xlsx():
 
 @app.route('/api/delete-album/<album_name>', methods=['DELETE'])
 @login_required
+@role_required(['admin'])
 def api_delete_album(album_name):
     """Удаление альбома из БД и файловой системы"""
     try:
@@ -783,6 +787,7 @@ def api_delete_album(album_name):
 
 @app.route('/api/delete-article/<album_name>/<article_name>', methods=['DELETE'])
 @login_required
+@role_required(['appadmin'])  # Только для appadmin
 def api_delete_article(album_name, article_name):
     """Удаление артикула из БД и файловой системы"""
     try:
