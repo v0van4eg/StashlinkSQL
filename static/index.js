@@ -600,20 +600,26 @@ function updateDeleteButtonsState() {
 
 // --- Инициализация кнопок удаления ---
 function initDeleteButtons() {
+    // Проверяем, является ли пользователь appadmin
+    const isAppAdmin = window.currentUser && window.currentUser.isAppAdmin;
+
+    // Если пользователь не appadmin, не создаем кнопки удаления
+    if (!isAppAdmin) {
+        return;
+    }
+
     // Создаем кнопки если их нет
     let deleteButtonsContainer = document.getElementById('deleteButtonsContainer');
     if (!deleteButtonsContainer) {
         deleteButtonsContainer = document.createElement('div');
         deleteButtonsContainer.id = 'deleteButtonsContainer';
         deleteButtonsContainer.className = 'delete-buttons-container';
-
         // Находим контейнер для кнопок (после селекторов)
         const manageCardContent = document.querySelector('.manage-card-content');
         if (manageCardContent) {
             // Вставляем контейнер после селекторов, но перед кнопкой XLSX
             const selectorGroups = manageCardContent.querySelectorAll('.selector-group');
             const lastSelectorGroup = selectorGroups[selectorGroups.length - 1];
-
             if (lastSelectorGroup && lastSelectorGroup.nextSibling) {
                 manageCardContent.insertBefore(deleteButtonsContainer, lastSelectorGroup.nextSibling);
             } else {
@@ -650,6 +656,7 @@ function initDeleteButtons() {
 
     updateDeleteButtonsState();
 }
+
 
 // --- Функции для работы с XLSX ---
 function initXlsxModal() {

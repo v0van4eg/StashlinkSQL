@@ -632,7 +632,7 @@
             <div style="margin-top: 10px;">
                 {% if current_user %}
                     <span>👤 {{ current_user.name }} | </span>
-                    <a href="/profile" style="color: #3498db;">Профиль</a> |
+<!--                    <a href="/profile" style="color: #3498db;">Профиль</a> |-->
                     <a href="/logout" style="color: #3498db;">Выйти</a>
                 {% else %}
                     <a href="/login" style="color: #3498db;">🔐 Войти</a>
@@ -741,5 +741,12 @@
     </div>
 
     <script src="/static/index.js"></script>
+    <script>
+        // Передаем информацию о ролях пользователя в JavaScript
+        window.currentUser = {
+            isAppAdmin: {% if is_app_admin() %}true{% else %}false{% endif %},
+            isAppUser: {% if is_app_user() %}true{% else %}false{% endif %}
+        };
+    </script>
 </body>
 </html>
