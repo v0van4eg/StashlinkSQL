@@ -1,5 +1,4 @@
 services:
-
   app:
     build: .
     image: pichost
@@ -10,6 +9,18 @@ services:
       - POSTGRES_DB=pichosting
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
+      # OAuth Configuration
+      - OAUTH_CLIENT_ID=pichost
+      - OAUTH_CLIENT_SECRET=zmuJN1TbiqXImGipguw7BhB14gFsgFFv
+      - OAUTH_METADATA_URL=https://ja.gradient.ru/keycloak/realms/pichost/.well-known/openid-configuration
+      - OAUTH_SCOPE=openid profile email
+      - OAUTH_CODE_CHALLENGE_METHOD=S256
+      # Fallback OAuth URLs (если metadata недоступна)
+      - OAUTH_BASE_URL=https://ja.gradient.ru/keycloak/realms/pichost/protocol/openid-connect
+      - OAUTH_AUTHORIZE_URL=https://ja.gradient.ru/keycloak/realms/pichost/protocol/openid-connect/auth
+      - OAUTH_ACCESS_TOKEN_URL=https://ja.gradient.ru/keycloak/realms/pichost/protocol/openid-connect/token
+      - OAUTH_LOGOUT_URL=https://ja.gradient.ru/keycloak/realms/pichost/protocol/openid-connect/logout
+      - SECRET_KEY=your-very-secure-secret-key-change-in-production
     volumes:
       - ./static:/app/static
       - ./images:/app/images
@@ -19,6 +30,8 @@ services:
     restart: always
     depends_on:
       - postgres
+    ports:
+      - "5000:5000"
 
   nginx:
     image: nginx:alpine
@@ -42,6 +55,7 @@ services:
       - POSTGRES_DB=pichosting
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/pichosting
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql

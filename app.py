@@ -1,8 +1,9 @@
 # app.py
 
+from auth_system import AuthManager, login_required, role_required, auth_context_processor
 import os
 import zipfile
-from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
+from flask import Flask, request, session, jsonify, render_template, send_from_directory, send_file
 import logging
 import re
 import unicodedata
@@ -19,6 +20,18 @@ import atexit
 from database import db_manager
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'default_secret_key')
+# Инициализация аутентификации (теперь параметры берутся из переменных окружения)
+auth_manager = AuthManager()
+auth_manager.init_app(app)
+
+# Регистрация маршрутов аутентификации
+auth_manager.register_routes()
+
+# Добавление контекстного процессора
+app.context_processor(auth_context_processor)
+
+
 app.config['UPLOAD_FOLDER'] = 'images'
 app.config['THUMBNAIL_FOLDER'] = 'thumbnails'
 app.config['THUMBNAIL_SIZE'] = (120, 120)  # Размер превью
@@ -382,7 +395,8 @@ def index():
 
 
 # Эндпоинт синхронизации БД
-@app.route('/api/sync', methods=['POST'])
+@app.route('/api/sync', methods=['GET'])
+@login_required
 def api_sync():
     try:
         deleted, added = sync_db_with_filesystem()
@@ -398,6 +412,7 @@ def api_sync():
 
 # Эндпоинт для принудительной очистки превью альбома
 @app.route('/api/cleanup-thumbnails/<album_name>', methods=['POST'])
+@login_required
 def api_cleanup_thumbnails(album_name):
     """Принудительная очистка превью для альбома"""
     try:
@@ -410,6 +425,7 @@ def api_cleanup_thumbnails(album_name):
 
 # Загрузка ZIP
 @app.route('/upload', methods=['POST'])
+@login_required
 def upload_zip():
     if 'zipfile' not in request.files:
         return jsonify({'error': 'No file part'}), 400
@@ -438,6 +454,7 @@ def upload_zip():
 
 # API: список всех файлов
 @app.route('/api/files')
+@login_required
 def api_files():
     files = get_all_files()
     return jsonify(files)
@@ -445,6 +462,7 @@ def api_files():
 
 # API: список альбомов
 @app.route('/api/albums')
+@login_required
 def api_albums():
     albums = get_albums()
     return jsonify(albums)
@@ -452,6 +470,7 @@ def api_albums():
 
 # API: список артикулов для альбома
 @app.route('/api/articles/<album_name>')
+@login_required
 def api_articles(album_name):
     articles = get_articles(album_name)
     return jsonify(articles)
@@ -460,6 +479,7 @@ def api_articles(album_name):
 # API: получение файлов для конкретного альбома (и опционально артикула)
 @app.route('/api/files/<album_name>')
 @app.route('/api/files/<album_name>/<article_name>')
+@login_required
 def api_files_filtered(album_name, article_name=None):
     if article_name:
         results = db_manager.execute_query(
@@ -480,6 +500,7 @@ def api_files_filtered(album_name, article_name=None):
 # Новые эндпоинты для превью
 @app.route('/api/thumbnails/<album_name>')
 @app.route('/api/thumbnails/<album_name>/<article_name>')
+@login_required
 def api_thumbnails(album_name, article_name=None):
     """API для получения информации о файлах с превью"""
     try:
@@ -530,12 +551,14 @@ def api_thumbnails(album_name, article_name=None):
 
 
 @app.route('/thumbnails/small/<path:filename>')
+@login_required
 def serve_small_thumbnail(filename):
     """Отдает маленькие превью (120x120)"""
     return serve_thumbnail(filename, app.config['THUMBNAIL_SIZE'])
 
 
 @app.route('/thumbnails/medium/<path:filename>')
+@login_required
 def serve_medium_thumbnail(filename):
     """Отдает средние превью (400x400)"""
     return serve_thumbnail(filename, app.config['PREVIEW_SIZE'])
@@ -565,6 +588,7 @@ def serve_thumbnail(filename, size):
 
 
 @app.route('/api/export-xlsx', methods=['POST'])
+@login_required
 def api_export_xlsx():
     """Создание XLSX документа с ссылками"""
     try:
@@ -707,6 +731,7 @@ def api_export_xlsx():
 
 
 @app.route('/api/delete-album/<album_name>', methods=['DELETE'])
+@login_required
 def api_delete_album(album_name):
     """Удаление альбома из БД и файловой системы"""
     try:
@@ -750,6 +775,7 @@ def api_delete_album(album_name):
 
 
 @app.route('/api/delete-article/<album_name>/<article_name>', methods=['DELETE'])
+@login_required
 def api_delete_article(album_name, article_name):
     """Удаление артикула из БД и файловой системы"""
     try:
@@ -795,6 +821,66 @@ def api_delete_article(album_name, article_name):
         logger.error(f"Error deleting article {article_name} from album {album_name}: {e}")
         return jsonify({'error': f'Ошибка удаления артикула: {str(e)}'}), 500
 
+@app.route('/admin')
+@login_required
+def admin_panel():
+    user = session.get('user', {})
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Админ-панель</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 40px; }}
+            .admin-panel {{ 
+                background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+                color: white;
+                padding: 40px;
+                border-radius: 10px;
+            }}
+            .admin-features {{ 
+                background: rgba(255,255,255,0.1);
+                padding: 20px;
+                border-radius: 8px;
+                margin: 20px 0;
+            }}
+            .admin-features ul {{ list-style: none; padding: 0; }}
+            .admin-features li {{ 
+                padding: 10px;
+                margin: 5px 0;
+                background: rgba(255,255,255,0.2);
+                border-radius: 5px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="admin-panel">
+            <h1>🔐 Админ-панель</h1>
+            <p>Добро пожаловать, <strong>{user.get('name', 'Администратор')}</strong>!</p>
+            <p>Это защищенная панель администратора.</p>
+
+            <div class="admin-features">
+                <h3>Доступные функции администратора:</h3>
+                <ul>
+                    <li>✅ Управление пользователями</li>
+                    <li>✅ Настройки системы</li>
+                    <li>✅ Просмотр логов</li>
+                    <li>✅ Управление ролями</li>
+                    <li>✅ Мониторинг безопасности</li>
+                    <li>✅ Резервное копирование</li>
+                </ul>
+            </div>
+
+            <p><strong>Ваши роли:</strong> {', '.join(user.get('roles', []))}</p>
+            <div style="margin-top: 20px;">
+                <a href="/" style="color: white; text-decoration: underline;">← На главную</a> | 
+                <a href="/profile" style="color: white; text-decoration: underline;">👤 Профиль</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+
 
 # Инициализация базы данных при запуске приложения
 init_db()
@@ -808,4 +894,4 @@ def cleanup():
 
 # --- Main ---
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True, ssl_context='adhoc')

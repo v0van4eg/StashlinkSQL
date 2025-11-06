@@ -629,6 +629,15 @@
         <header>
             <h2>📁 PicHost — Хостинг изображений</h2>
             <p class="subtitle">Загрузите ZIP-архив с изображениями для получения прямых ссылок</p>
+            <div style="margin-top: 10px;">
+                {% if current_user %}
+                    <span>👤 {{ current_user.name }} | </span>
+                    <a href="/profile" style="color: #3498db;">Профиль</a> |
+                    <a href="/logout" style="color: #3498db;">Выйти</a>
+                {% else %}
+                    <a href="/login" style="color: #3498db;">🔐 Войти</a>
+                {% endif %}
+            </div>
         </header>
         <div class="columns">
             <div class="column-left">

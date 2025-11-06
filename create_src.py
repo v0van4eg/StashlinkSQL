@@ -28,7 +28,7 @@ def load_gitignore_rules(startpath):
                     ignore_rules.append(line)
     # Добавляем правило для игнорирования __pycache__
     ignore_rules.append("__pycache__")
-    ignore_rules.append("files.db")
+    ignore_rules.append("example")
     ignore_rules.append("create_src.py")
     ignore_rules.append("text.txt")
     ignore_rules.append("Исходники.txt")
