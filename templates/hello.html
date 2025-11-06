@@ -27,6 +27,16 @@
     </style>
 </head>
 <body>
+        <header>
+            <div style="margin-top: 10px;">
+                {% if current_user %}
+                    <span>👤 {{ current_user.name }} | </span>
+                    <a href="/logout" style="color: #3498db;">Выйти</a>
+                {% else %}
+                    <a href="/login" style="color: #3498db;">🔐 Войти</a>
+                {% endif %}
+            </div>
+        </header>
     <div class="hello-container">
         <h1>Добро пожаловать отсюда!</h1>
         <p>Это просто страница.</p>

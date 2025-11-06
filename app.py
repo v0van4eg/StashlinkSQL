@@ -1,6 +1,7 @@
 # app.py
 
 from auth_system import AuthManager, login_required, role_required, auth_context_processor
+from auth_system import is_authenticated
 import os
 import zipfile
 from flask import Flask, request, session, jsonify, render_template, send_from_directory, send_file
@@ -391,7 +392,11 @@ def process_zip(zip_path):
 # --- Routes ---
 @app.route('/')
 def index():
-    return render_template('index.html', base_url=base_url)
+    # Используем функцию из контекстного процессора
+    if is_authenticated():
+        return render_template('index.html', base_url=base_url)
+    else:
+        return render_template('hello.html')
 
 
 # Эндпоинт синхронизации БД
@@ -880,6 +885,12 @@ def admin_panel():
     </body>
     </html>
     '''
+
+
+@app.route('/hello')
+def hello():
+    return render_template('hello.html', base_url=base_url)
+
 
 
 # Инициализация базы данных при запуске приложения

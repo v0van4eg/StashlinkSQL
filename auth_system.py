@@ -1,4 +1,4 @@
-# auth_system.py - исправленная версия
+# auth_system.py - исправленная версия с переходом на /hello после logout
 from flask import session, redirect, url_for, request, flash
 from functools import wraps
 import base64
@@ -195,10 +195,10 @@ class AuthManager:
             ''', 400
 
     def _handle_logout(self):
-        """Обработка выхода"""
+        """Обработка выхода с переходом на /hello"""
         try:
-            # Получаем URL для редиректа после выхода
-            post_logout_redirect_uri = request.args.get('next', url_for('index', _external=True))
+            # Получаем URL для редиректа после выхода - теперь всегда на /hello
+            post_logout_redirect_uri = url_for('hello', _external=True)
             id_token = session.get('id_token')
 
             # Формируем URL выхода из Keycloak
@@ -207,12 +207,13 @@ class AuthManager:
             # Очищаем сессию
             session.clear()
 
-            self.app.logger.info("User logged out successfully")
+            self.app.logger.info("User logged out successfully, redirecting to /hello")
             return redirect(logout_url)
         except Exception as e:
             self.app.logger.error(f"Logout error: {str(e)}")
             session.clear()
-            return redirect(url_for('index'))
+            # При ошибке тоже редиректим на /hello
+            return redirect(url_for('hello'))
 
     def _decode_jwt_payload(self, token):
         """Декодирует JWT payload без проверки подписи"""
@@ -256,8 +257,8 @@ class AuthManager:
             return logout_url
         except Exception as e:
             self.app.logger.error(f"Error creating logout URL: {e}")
-            # Fallback: просто очищаем сессию и редиректим на главную
-            return url_for('index')
+            # Fallback: просто очищаем сессию и редиректим на /hello
+            return url_for('hello')
 
 
 # Декораторы для защиты маршрутов
