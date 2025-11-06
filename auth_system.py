@@ -261,6 +261,7 @@ class AuthManager:
             return url_for('hello')
 
 
+
 # Декораторы для защиты маршрутов
 def login_required(f):
     """Декоратор для проверки аутентификации"""
@@ -339,5 +340,25 @@ def auth_context_processor():
         'current_user': get_current_user(),
         'is_authenticated': is_authenticated(),
         'user_has_role': user_has_role,
-        'user_roles': get_user_roles()
+        'user_roles': get_user_roles(),
+        'is_app_admin': is_app_admin,  # Добавляем эту функцию
+        'is_app_user': is_app_user     # И эту
     }
+
+# В раздел утилит для работы с пользователями добавьте:
+
+def user_has_any_role(roles):
+    """Проверяет, есть ли у пользователя хотя бы одна из указанных ролей"""
+    user = get_current_user()
+    if not user:
+        return False
+    user_roles = user.get('roles', [])
+    return any(role in user_roles for role in roles)
+
+def is_app_admin():
+    """Проверяет, является ли пользователь appadmin"""
+    return user_has_any_role(['appadmin'])
+
+def is_app_user():
+    """Проверяет, является ли пользователь appuser"""
+    return user_has_any_role(['appuser', 'appadmin'])  # appadmin тоже имеет права appuser
