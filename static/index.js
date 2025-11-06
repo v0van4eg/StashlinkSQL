@@ -236,6 +236,7 @@ async function loadAlbums() {
     }
 }
 
+// Улучшенная функция загрузки артикулов
 async function loadArticles(albumName) {
     if (!albumName) {
         articleSelector.innerHTML = '<option value="">-- Сначала выберите альбом --</option>';
@@ -245,9 +246,13 @@ async function loadArticles(albumName) {
     }
 
     try {
+        console.log('Loading articles for album:', albumName); // Для отладки
+
         const response = await fetch(`/api/articles/${encodeURIComponent(albumName)}`);
-        if (!response.ok) throw new Error('Failed to load articles');
+        if (!response.ok) throw new Error(`HTTP ${response.status}: Failed to load articles`);
+
         const articles = await response.json();
+        console.log('Received articles:', articles); // Для отладки
 
         articleSelector.innerHTML = '<option value="">-- Все артикулы --</option>';
         articles.forEach(article => {
@@ -404,6 +409,7 @@ function showPreviewModal(fileData) {
 }
 
 // --- Загрузка и отображение файлов для альбома с превью ---
+// Исправленная функция showFilesForAlbum
 async function showFilesForAlbum(albumName, articleName = '') {
     if (!currentAlbumTitle || !linkList) {
         console.error('DOM elements for file list not initialized');
@@ -417,30 +423,30 @@ async function showFilesForAlbum(albumName, articleName = '') {
     currentAlbumTitle.textContent = title;
 
     try {
-        // Используем новый эндпоинт с превью
-        const url = articleName
-            ? `/api/thumbnails/${encodeURIComponent(albumName)}/${encodeURIComponent(articleName)}`
-            : `/api/thumbnails/${encodeURIComponent(albumName)}`;
+        // Формируем URL в зависимости от наличия артикула
+        let url;
+        if (articleName) {
+            url = `/api/thumbnails/${encodeURIComponent(albumName)}/${encodeURIComponent(articleName)}`;
+        } else {
+            url = `/api/thumbnails/${encodeURIComponent(albumName)}`;
+        }
+
+        console.log('Fetching URL:', url); // Для отладки
 
         const response = await fetch(url);
-        if (!response.ok) throw new Error('Failed to load file list');
-        const files = await response.json();
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
 
-        if (files.length === 0) {
+        const files = await response.json();
+        console.log('Received files:', files); // Для отладки
+
+        if (!files || files.length === 0) {
             linkList.innerHTML = '<div class="empty-state">В выбранной категории нет файлов.</div>';
             return;
         }
 
-        // Группировка файлов по артикулам
-        const groupedFiles = {};
-        files.forEach(item => {
-            const article = item.article_number;
-            if (!groupedFiles[article]) {
-                groupedFiles[article] = [];
-            }
-            groupedFiles[article].push(item);
-        });
-
+        // Очищаем список
         linkList.innerHTML = '';
 
         // Если выбран конкретный артикул, показываем файлы без группировки
@@ -461,8 +467,24 @@ async function showFilesForAlbum(albumName, articleName = '') {
                 createFileListItem(item, linkList);
             });
         } else {
+            // Группировка файлов по артикулам для отображения всего альбома
+            const groupedFiles = {};
+            files.forEach(item => {
+                const article = item.article_number;
+                if (!groupedFiles[article]) {
+                    groupedFiles[article] = [];
+                }
+                groupedFiles[article].push(item);
+            });
+
             // Показываем с группировкой по артикулам
             const sortedArticles = Object.keys(groupedFiles).sort();
+
+            if (sortedArticles.length === 0) {
+                linkList.innerHTML = '<div class="empty-state">В альбоме нет файлов.</div>';
+                return;
+            }
+
             sortedArticles.forEach(article => {
                 const articleHeader = document.createElement('li');
                 articleHeader.className = 'article-header';
@@ -489,7 +511,7 @@ async function showFilesForAlbum(albumName, articleName = '') {
         }
     } catch (error) {
         console.error('Error loading files:', error);
-        linkList.innerHTML = `<div class="empty-state">Ошибка загрузки файлов.</div>`;
+        linkList.innerHTML = `<div class="empty-state">Ошибка загрузки файлов: ${error.message}</div>`;
     }
 }
 
@@ -810,15 +832,21 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // --- Обработчики для селекторов ---
+    // Добавим также улучшенную обработку изменения селектора альбома
     albumSelector.addEventListener('change', function() {
         const selectedAlbum = this.value;
+        console.log('Album selected:', selectedAlbum); // Для отладки
+
         loadArticles(selectedAlbum);
         clearLinkList();
         updateCreateXlsxButtonState();
         updateDeleteButtonsState();
 
         if (selectedAlbum) {
-            showFilesForAlbum(selectedAlbum);
+            // Небольшая задержка для лучшего UX
+            setTimeout(() => {
+                showFilesForAlbum(selectedAlbum);
+            }, 100);
         }
     });
 
