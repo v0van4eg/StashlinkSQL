@@ -739,7 +739,6 @@ def api_export_xlsx():
 
 @app.route('/api/delete-album/<album_name>', methods=['DELETE'])
 @login_required
-@role_required(['appadmin'])  # Добавляем проверку роли
 def api_delete_album(album_name):
     """Удаление альбома из БД и файловой системы"""
     try:
@@ -784,7 +783,6 @@ def api_delete_album(album_name):
 
 @app.route('/api/delete-article/<album_name>/<article_name>', methods=['DELETE'])
 @login_required
-@role_required(['appadmin'])  # Добавляем проверку роли
 def api_delete_article(album_name, article_name):
     """Удаление артикула из БД и файловой системы"""
     try:
